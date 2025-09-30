@@ -1,7 +1,6 @@
 # Contact Info: 
 - Name: Aysan Hemmatiortakand 
-- Email address: Personal : Aysanhemmatiortakand@gmail.com , U of A: hemmatio@ualberta.ca
-
+- Email address: Aysanhemmatiortakand@gmail.com
 # Brief Summery of What Each Code does: 
 ## find_star.py:
 
