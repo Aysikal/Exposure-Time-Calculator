@@ -16,7 +16,7 @@
 ### How to operate: 
 After typing in the needed parameters mentioned in **inputs**, images from the chosen folder pop up one by one. click on the **center** of the star that you are interested in. Keep doing this until there are no images left. the list of all the places you have clicked will be saved to an .npy file, so you wouldn't have to do it again.  
 
-## B) PSF (?)
+## B) PSF.py
 
 ### inputs:
 - box_size: the size of the array cutout around the given star coordinate. Change according to seeing conditions and FOV. 
