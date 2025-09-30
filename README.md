@@ -1,9 +1,9 @@
 # Contact Info: 
 - Name: Aysan Hemmatiortakand 
-- Email address: Aysanhemmatiortakand@gmail.com
+- Email address: Personal : Aysanhemmatiortakand@gmail.com , U of A: hemmatio@ualberta.ca
 
-# The ETC Calbration Pipeline
-## A) find_star.py:
+# Brief Summery of What Each Code does: 
+## find_star.py:
 
 ### Inputs: 
 - folder_path: Location of your images.
