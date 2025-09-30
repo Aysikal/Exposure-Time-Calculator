@@ -1,3 +1,10 @@
+#════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════#
+#This code was written by Aysan Hemmatiortakand. Last updated 9/30/2025 
+#you can contact me for any additional questions or information via Email 
+#email address :aysanhemmatiortakand@gmail.com
+#github = https://github.com/Aysikal
+#════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════#
+
 import os
 from astropy.io import fits
 import numpy as np
@@ -5,11 +12,12 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from astropy.visualization import ImageNormalize, ZScaleInterval
 from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes
-
+#════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════#
+#input values:
 folder_path = r"C:\Users\AYSAN\Desktop\project\INO\gd246\Test folder"  # location to where the images are located
 save_directory = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords"  # location to where you want to save the star coordinates
 save_filename = "This is a test"  # The name you want to give the star coordinates file
-
+#════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════#
 def open_fits(path):
     with fits.open(path) as fitsfile:
         file = fitsfile[0].data
