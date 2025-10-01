@@ -52,3 +52,40 @@ After typing in the needed parameters mentioned in **inputs**, images from the c
 - Mean Sky Flux
 - Star Flux Minus Sky Flux
 
+# Ancillary codes:
+
+## object_visibilty.py
+(a function version of this is in ancillary_functions.py)
+### Inputs: 
+
+- Observer info: 
+    1) latitude
+    2) longitude
+    3) elevation 
+    4) timezone 
+    5) name of observatory
+- date: "year-month-day" format 
+- mid_day: "12:00:00"
+- n_steps: number of points in the plot
+- star_coords: "name" : ("HH:MM:SS", "DD:MM:SS")
+
+### Outputs: 
+
+- An object visibilty plot for each star
+- An object visibilty plot of all stars together. 
+
+
+## airmass.py
+(a function version of this is in ancillary_functions.py)
+### inputs: 
+
+location : INO_LOCATION = EarthLocation(lat=33.674 * u.deg,
+                             lon=51.3188 * u.deg,
+                             height=3600 * u.m)
+date : "year-month-day"
+hour : e.g. 21 (utc or local, depends on input_timezone)
+minute: e.g. 0
+RA: e.g. "23:13:38.8"
+DEC: e.g. "+39:25:02.6"
+input_timezone: "UTC" or "Aisa/Teharn" or ...
+plot_night_curve: False or True, if True it plots a altitude vs. time plot colored by airmass. 
