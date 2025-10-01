@@ -79,13 +79,18 @@ After typing in the needed parameters mentioned in **inputs**, images from the c
 (a function version of this is in ancillary_functions.py)
 ### inputs: 
 
-location : INO_LOCATION = EarthLocation(lat=33.674 * u.deg,
+- location : INO_LOCATION = EarthLocation(lat=33.674 * u.deg,
                              lon=51.3188 * u.deg,
                              height=3600 * u.m)
-date : "year-month-day"
-hour : e.g. 21 (utc or local, depends on input_timezone)
-minute: e.g. 0
-RA: e.g. "23:13:38.8"
-DEC: e.g. "+39:25:02.6"
-input_timezone: "UTC" or "Aisa/Teharn" or ...
-plot_night_curve: False or True, if True it plots a altitude vs. time plot colored by airmass. 
+- date : "year-month-day"
+- hour : e.g. 21 (utc or local, depends on input_timezone)
+- minute: e.g. 0
+- RA: e.g. "23:13:38.8"
+- DEC: e.g. "+39:25:02.6"
+- input_timezone: "UTC" or "Aisa/Teharn" or ...
+- plot_night_curve: False or True, if True it plots a altitude vs. time plot colored by airmass. 
+
+### outputs: 
+- Altitude
+- Airmass
+- plot_night_curve = True, altitude vs. time plot colored by airmass.
