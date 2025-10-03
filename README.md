@@ -94,3 +94,61 @@ After typing in the needed parameters mentioned in **inputs**, images from the c
 - Altitude
 - Airmass
 - plot_night_curve = True, altitude vs. time plot colored by airmass.
+
+## moon_tracking
+ site location, elevation, timezone and other observer info is set at the beginning. 
+
+### get_fli()
+#### inputs: 
+- date: "year-month-day"
+- hous: int 
+- minute: int
+#### outputs:
+- Time (Asia/Tehran): 2025-10-01 19:00
+- Moon altitude: 30.62°
+- Moon azimuth:  173.39°
+- Elongation ψ:  108.8°
+- Illuminated:   66.1%
+
+### overlay_visibility_with_moon()
+
+#### inputs:
+- - returns : fli
+- star_coords (dict): e.g. stars = {"vega" :  ("18:36:56.3", "+38:47:01")} 
+- date: "years-month-day"
+- elevation_limit: e.g. u.Quantity = 30*u.deg for a 30 degree minimum altitude accepted for object. 
+- moon_alt_limit: e.g. u.Quantity = 20*u.deg for a 20 degree maximum altitude accepted for the moon. 
+- overlay: if True, the plot shows all the objects in star_coords in one image. 
+
+#### outputs: 
+- an altitude vs time plot of the object(s) and the moon. if moon alt > moon_alt_limit, the plot is shaded. 
+
+### moon_seperation():
+
+#### inputs: 
+- date: "year-month-day"
+- hour: int
+- minute: int
+- RA: str
+- DEC: str
+
+#### outputs 
+- returns : sep (seperation) in degrees
+- Time (Asia/Tehran): 2025-10-01 20:00
+  Target: RA=18:36:56.3, DEC=+38:47:01
+  Moon separation (AltAz): 67.19°
+
+### lunar_sky_brightness_at_target()
+
+#### inputs: 
+- date: "year-month-day"
+- hour: int
+- minutes: int
+- ra: e.g. "18:36:56.3"
+- dec: e.g. "+38:47:01"
+- filter_name: "u", "g", "r", "i" for the current INO filters 
+- plot_sky_brightness: if True, a 2D plot of the sky, illuminated by the moonlight. 
+
+#### outputs: 
+- the magnitude of the moon at the location of the given target. 
+- 2D plot of the sky, illuminated by the moonlight. 
