@@ -3,7 +3,20 @@
 - Email address: Personal : Aysanhemmatiortakand@gmail.com , U of A: hemmatio@ualberta.ca
 
 # Brief Summery of What Each Code does: 
-## find_star.py:
+## 0) master_frame.py
+
+### inputs:
+- in the pop-up that appears, choose between masterdark, masterflat or masterbias. 
+- find the folder of choosing.
+- output_dir 
+
+### outputs: 
+- a masterframe is saved to output_dir 
+
+## 1) data-reduction.py
+
+
+## 2) find_star.py:
 
 ### Inputs: 
 - folder_path: Location of your images.
@@ -16,7 +29,7 @@
 ### How to operate: 
 After typing in the needed parameters mentioned in **inputs**, images from the chosen folder pop up one by one. click on the **center** of the star that you are interested in. Keep doing this until there are no images left. the list of all the places you have clicked will be saved to an .npy file, so you wouldn't have to do it again.  
 
-## B) PSF.py
+## 3) PSF.py
 
 ### inputs:
 - box_size: the size of the array cutout around the given star coordinate. Change according to seeing conditions and FOV. 
@@ -35,16 +48,16 @@ After typing in the needed parameters mentioned in **inputs**, images from the c
 - Histogram of the PSF distribution +  Median PSF in arcseconds
 - list of FWHM for each image in pixels
 
-## C) star_flux.py
+## 4) star_flux.py
 
 ### inputs: 
 - box_size: the size of the array cutout around the given star coordinate. Change according to seeing conditions and FOV. 
-- seeing: PSF in arcseconds (from subroutine B)
+- seeing: PSF in arcseconds (from subroutine 3)
 - aperture ratio: aperture ratio $\times$ PSF is the radius of the circular aperture around the star.
 - pixel_scale: in arcseconds, currently set for the INO.
 - color: the colormap used for plots.
 - folder_path: Location of your images
-- star_coordinates_loc: Location of the coordinates (output of sub-routine A)
+- star_coordinates_loc: Location of the coordinates (output of sub-routine 2)
 
 ### Outputs: 
 - image of each star + apertures ()
@@ -74,6 +87,7 @@ After typing in the needed parameters mentioned in **inputs**, images from the c
 - An object visibilty plot for each star
 - An object visibilty plot of all stars together. 
 
+![visibility Plot](README_images\visibility.png)
 
 ## airmass.py
 (a function version of this is in ancillary_functions.py)
@@ -95,6 +109,7 @@ After typing in the needed parameters mentioned in **inputs**, images from the c
 - Airmass
 - plot_night_curve = True, altitude vs. time plot colored by airmass.
 
+![Airmass Plot](README_images/airmass.png)
 ## moon_tracking
  site location, elevation, timezone and other observer info is set at the beginning. 
 
@@ -123,6 +138,8 @@ After typing in the needed parameters mentioned in **inputs**, images from the c
 #### outputs: 
 - an altitude vs time plot of the object(s) and the moon. if moon alt > moon_alt_limit, the plot is shaded. 
 
+![Moon visibility overlay Plot](README_images\moon_visibility.png)
+
 ### moon_seperation():
 
 #### inputs: 
@@ -148,6 +165,9 @@ After typing in the needed parameters mentioned in **inputs**, images from the c
 - dec: e.g. "+38:47:01"
 - filter_name: "u", "g", "r", "i" for the current INO filters 
 - plot_sky_brightness: if True, a 2D plot of the sky, illuminated by the moonlight. 
+
+
+![lunar sky brightness plot](README_images\lunar_sky_brightness.png) 
 
 #### outputs: 
 - the magnitude of the moon at the location of the given target. 

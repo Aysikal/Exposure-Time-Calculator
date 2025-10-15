@@ -1,0 +1,14 @@
+=== alignment script starting ===
+logfile: c:\Users\AYSAN\Desktop\project\INO\ETC\Codes\alignment_run_20251014-184034.log
+python executable: C:\Users\AYSAN\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\python.exe
+current working dir: C:\Users\AYSAN\Desktop\project\INO\ETC
+script file: c:\Users\AYSAN\Desktop\project\INO\ETC\Codes\stack.py
+Starting main()
+Found 34 FITS files in C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\Oct 7 area 95 green high\keep
+Reference: C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\Oct 7 area 95 green high\keep\area95_g_T10_2025_10_08_2x2_exp00.00.30.000_000001_High_10_dark_and_flat_corrected.fit
+✅ Saved: C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\Oct 7 area 95 green high\keep\aligned\area95_g_T10_2025_10_08_2x2_exp00.00.30.000_000001_High_10_dark_and_flat_corrected.fit
+Reference sources detected: 400
+[2/34] Processing: area95_g_T10_2025_10_08_2x2_exp00.00.30.000_000001_High_11_dark_and_flat_corrected.fit
+Detected sources: 400
+astroalign (coords) failed: find_transform() got an unexpected keyword argument 'min_control'
+astroalign (image) failed: register() got an unexpected keyword argument 'min_control'

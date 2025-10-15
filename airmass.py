@@ -170,11 +170,11 @@ X_local = airmass_function(
 # 2) Compute airmass at 18:00 UTC,
 #    and overlay the full-night curve in UTC:
 X_utc = airmass_function(
-    "2025-09-30",
-    hour=18,
+    "2025-10-08",
+    hour=22,
     minute=0,
-    RA="23:13:38.8",
-    DEC="+39:25:02.6",
-    input_timezone="UTC",
+    RA="23:50:07.67774550480",
+    DEC="+29:15:21.5900515184",
+    input_timezone="Asia/Tehran",
     plot_night_curve=True
 )

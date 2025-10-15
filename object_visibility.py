@@ -33,7 +33,7 @@ ino = Observer(
     timezone="Asia/Tehran",
     name="Iran National Observatory"
 )
-date = "2025-09-30"
+date = "2025-10-08"
 mid_day = Time(f"{date} 12:00:00")
 
 # 3) Compute sunset and sunrise
@@ -49,7 +49,7 @@ times        = sunset + delta_hours
 
 # 5) Your list of five stars (RA in HH:MM:SS, Dec in DD:MM:SS)
 star_coords = {
-    "BD+17 4708": ("22:11:31.4", "+18:05:34.1"),
+    "GRB 251007A": ("08:32:42.36", "+21:48:46.7"),
     "BD+28 4211": ("21:51:11.0", "+28:51:50.4"),
     "BD+33 4737": ("23:34:36.1", "+34:05:36.6"),
     "BD+38 4955": ("23:13:38.8", "+39:25:02.6"),

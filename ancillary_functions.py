@@ -160,13 +160,13 @@ def airmass_function(
         AltAz(obstime=t0, location=SITE_LOCATION)
     ).alt.degree
 
-    print(f"Altitude at {ts} UTC: {alt0:.2f}°")
+    print(alt0)
     z0 = np.radians(90 - alt0)
     X0 = 1.0 / (
         np.cos(z0)
         + 0.50572 * (6.07995 + np.degrees(z0)) ** (-1.6364)
     )
-    print(f"Airmass at {ts} UTC: {X0:.3f}")
+    #print(f"Airmass at {ts} UTC: {X0:.3f}")
 
     # Optional full‐night airmass plot
     if plot_night_curve:
