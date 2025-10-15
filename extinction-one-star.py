@@ -1,0 +1,259 @@
+# extinction_pipeline_fixed_aperture_netpos_filter_POSITIVE_K_UTCcheck_npy_multi.py
+
+import os, math, csv, numpy as np, matplotlib.pyplot as plt
+from datetime import datetime
+import pytz
+from astropy.io import fits
+from astropy.nddata import Cutout2D
+from astropy.visualization import ZScaleInterval
+from ancillary_functions import airmass_function
+import matplotlib.patches as patches
+
+# ---------------- CONFIG ----------------
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\sept 30 area 95 g low\keep"
+COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction"
+OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables")
+os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
+
+RA_HARD, DEC_HARD = "03:53:21", "-00:00:20"
+PSF_ARCSEC = 0.7
+PIXEL_SCALE = 0.047 * 1.8
+BOX_FACTOR, REFINE_RADIUS_FACTOR = 10.0, 10.0
+Z = ZScaleInterval()
+K_AP, ANN_IN_FACT, ANN_OUT_FACT = 1.0, 3.0, 5.0
+SITE_TZ_NAME = "Asia/Tehran"
+PLOT_SAVEFIG = False
+
+pixels_per_arcsec = PIXEL_SCALE
+box_size_px = round((BOX_FACTOR * PSF_ARCSEC) / pixels_per_arcsec)
+if box_size_px % 2 == 0: box_size_px += 1
+PSF_PIX_REF = PSF_ARCSEC / PIXEL_SCALE
+REFINE_BOX = int(round(REFINE_RADIUS_FACTOR * PSF_PIX_REF))
+if REFINE_BOX % 2 == 0: REFINE_BOX += 1
+FIXED_AP_RADIUS_PX = float(K_AP * PSF_PIX_REF)
+
+print(f"Using fixed aperture {FIXED_AP_RADIUS_PX:.3f}px  box={box_size_px}, refine={REFINE_BOX}")
+
+# ---------------- Helpers ----------------
+def list_fits(folder):
+    return sorted([f for f in os.listdir(folder) if f.lower().endswith(('.fits', '.fit'))])
+
+def load_fits(path):
+    with fits.open(path, memmap=True) as hdul:
+        return np.nan_to_num(hdul[0].data.astype(float)), hdul[0].header
+
+def get_exptime_raw_from_header(hdr):
+    for key in ("DURATION","EXPTIME","EXPOSURE","EXPTIM","ITIME","ONTIME","TELAPSE"):
+        v = hdr.get(key)
+        if v is not None:
+            try: return float(v)
+            except Exception:
+                try: return float(str(v))
+                except Exception: continue
+    return None
+
+def exptime_seconds_from_raw(raw_val):
+    if raw_val is None: return np.nan
+    try: return float(raw_val)*1e-5
+    except Exception: return np.nan
+
+def parse_dateobs_token(hdr):
+    s = hdr.get('DATE-OBS')
+    if s is None: return None
+    s = str(s).split()[0]
+    if "T" in s:
+        d,t = s.split("T",1)
+        t = ''.join(ch for ch in t if ch.isdigit() or ch in [":","."])
+        return f"{d}T{t}"
+    return s
+
+def local_token_to_utc_components(token, tz_name=SITE_TZ_NAME):
+    if token is None: return None, None, None, None
+    try:
+        for fmt in ("%Y-%m-%dT%H:%M:%S.%f","%Y-%m-%dT%H:%M:%S"):
+            try:
+                dt_local = datetime.strptime(token, fmt)
+                break
+            except Exception: continue
+        tz = pytz.timezone(tz_name)
+        dt_local = tz.localize(dt_local)
+        dt_utc = dt_local.astimezone(pytz.utc)
+        return dt_utc.strftime("%Y-%m-%d"), dt_utc.hour, dt_utc.minute, dt_utc
+    except Exception:
+        return None, None, None, None
+
+def centroid_in_array(arr):
+    arr = np.nan_to_num(arr)
+    if arr.size==0: return 0.,0.
+    try:
+        from photutils.centroids import centroid_com
+        cy,cx = centroid_com(arr)
+        return float(cx),float(cy)
+    except Exception:
+        total = arr.sum()
+        if total<=0:
+            i,j = np.unravel_index(np.nanargmax(arr), arr.shape)
+            return float(j),float(i)
+        yy,xx = np.indices(arr.shape)
+        cx=(xx*arr).sum()/total; cy=(yy*arr).sum()/total
+        return float(cx),float(cy)
+
+def make_masks(shape, center, r_ap, r_in, r_out):
+    yy,xx=np.indices(shape)
+    rr=np.sqrt((xx-center[0])**2+(yy-center[1])**2)
+    return rr<=r_ap, (rr>=r_in)&(rr<=r_out)
+
+# ---------------- Main logic ----------------
+fits_files = list_fits(ALIGNED_FOLDER)
+if not fits_files:
+    raise SystemExit("No FITS files found.")
+
+npy_files = sorted([f for f in os.listdir(COORDS_FOLDER) if f.lower().endswith(".npy")])
+if not npy_files:
+    raise SystemExit(f"No .npy coordinate files found in {COORDS_FOLDER}")
+
+print(f"Found {len(npy_files)} star coordinate files → processing each")
+
+all_star_fits = []
+
+for sid, npy_name in enumerate(npy_files, start=1):
+    npy_path = os.path.join(COORDS_FOLDER, npy_name)
+    coords = np.load(npy_path)
+    if coords.shape[0] != len(fits_files):
+        print(f"⚠️ Warning: {npy_name} has {coords.shape[0]} coords, "
+              f"but {len(fits_files)} FITS files. Skipping this star.")
+        continue
+
+    print(f"\nProcessing {npy_name} (star {sid})")
+
+    records = []
+    cutout_imgs = []
+    cutout_centers = []
+    cutout_names = []
+
+    for idx, fname in enumerate(fits_files):
+        data, hdr = load_fits(os.path.join(ALIGNED_FOLDER, fname))
+        y_star, x_star = coords[idx]  # (y, x) order expected
+
+        # refine centroid slightly in a local box
+        cut = Cutout2D(data, (x_star, y_star), REFINE_BOX, mode='partial')
+        cx, cy = centroid_in_array(cut.data)
+        x_star = x_star - cut.data.shape[1]/2 + cx
+        y_star = y_star - cut.data.shape[0]/2 + cy
+
+        token = parse_dateobs_token(hdr)
+        date_utc_str, hour_utc, minute_utc, dt_utc = local_token_to_utc_components(token)
+        if date_utc_str is None:
+            airmass_val = np.nan; altitude_val = np.nan
+        else:
+            try:
+                airmass_val = airmass_function(date_utc_str, hour_utc, minute_utc,
+                                               RA_HARD, DEC_HARD, plot_night_curve=False)
+                altitude_val = 90.0 - math.degrees(math.acos(1.0/airmass_val)) if (airmass_val and airmass_val>1.0) else 90.0
+            except Exception:
+                airmass_val = np.nan; altitude_val = np.nan
+
+        exptime_raw = get_exptime_raw_from_header(hdr)
+        exptime_s = exptime_seconds_from_raw(exptime_raw)
+
+        disp_cut = Cutout2D(data, (x_star, y_star), box_size_px, mode='partial')
+        disp_data = np.nan_to_num(disp_cut.data)
+        cx_disp, cy_disp = disp_cut.to_cutout_position((x_star, y_star))
+
+        cutout_imgs.append(disp_data)
+        cutout_centers.append((cx_disp, cy_disp))
+        cutout_names.append(os.path.basename(fname))
+
+        ap_mask, ann_mask = make_masks(disp_data.shape, (cx_disp, cy_disp),
+                                       FIXED_AP_RADIUS_PX, ANN_IN_FACT*PSF_PIX_REF, ANN_OUT_FACT*PSF_PIX_REF)
+        ap_values, ann_values = disp_data[ap_mask], disp_data[ann_mask]
+        sum_circle = float(np.nansum(ap_values))
+        n_pix = int(np.count_nonzero(ap_mask))
+        mean_ann = float(np.mean(ann_values)) if ann_values.size>0 else float(np.mean(disp_data))
+        net = sum_circle - n_pix * mean_ann
+        net_per_sec = net / exptime_s if (not np.isnan(exptime_s) and exptime_s>0) else np.nan
+        m_instr = -2.5*np.log10(net_per_sec) + 15 if (net_per_sec>0 and np.isfinite(net_per_sec)) else np.nan
+
+        records.append({
+            "dt_utc_obj": dt_utc,
+            "date_utc": date_utc_str or "",
+            "time_utc": dt_utc.strftime("%H:%M:%S") if dt_utc else "",
+            "file_name": os.path.basename(fname),
+            "exptime_s": exptime_s,
+            "sum_circle": sum_circle,
+            "mean_annulus": mean_ann,
+            "n_pix": n_pix,
+            "net": net,
+            "altitude_deg": altitude_val,
+            "airmass": airmass_val,
+            "instrumental_mag": m_instr
+        })
+
+    # ---- Save CSV ----
+    records_sorted = sorted(records, key=lambda r: (r["dt_utc_obj"] if r["dt_utc_obj"] is not None else r["time_utc"]))
+    csv_path = os.path.join(OUTPUT_TABLE_FOLDER, f"star_{sid:02d}_photometry.csv")
+    csv_fieldnames = [k for k in records_sorted[0].keys() if k != "dt_utc_obj"]
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=csv_fieldnames)
+        writer.writeheader()
+        for row in records_sorted:
+            row_out = {k: (v if k!="dt_utc_obj" else "") for k,v in row.items() if k != "dt_utc_obj"}
+            writer.writerow(row_out)
+    print(f"Saved CSV → {csv_path}")
+
+    # ---- Extinction fit ----
+    airmass_arr = np.array([r["airmass"] for r in records_sorted], float)
+    mag_arr = np.array([r["instrumental_mag"] for r in records_sorted], float)
+    mask = np.isfinite(airmass_arr) & np.isfinite(mag_arr)
+    if np.count_nonzero(mask) > 2:
+        X = airmass_arr[mask]; Y = mag_arr[mask]
+        order = np.argsort(X)
+        Xs, Ys = X[order], Y[order]
+        coeffs = np.polyfit(Xs, Ys, 1)
+        K, m0 = float(coeffs[0]), float(coeffs[1])
+        Yfit_sorted = np.polyval(coeffs, Xs)
+
+        fig, ax = plt.subplots(figsize=(6,4))
+        ax.scatter(Xs, Ys, s=30, label=f"{os.path.splitext(npy_name)[0]}")
+        ax.plot(Xs, Yfit_sorted, '--', lw=1.5, label=f"K={K:.3f}, m₀={m0:.3f}")
+        ax.set_xlabel("Airmass"); ax.set_ylabel("Instrumental mag")
+        ax.set_title(f"{npy_name}: Extinction Fit")
+        ax.legend(); ax.grid(True)
+        if PLOT_SAVEFIG:
+            out_fit = os.path.join(OUTPUT_TABLE_FOLDER, f"{os.path.splitext(npy_name)[0]}_fit.png")
+            plt.savefig(out_fit, dpi=150); plt.close(fig)
+        else:
+            plt.show(); plt.close(fig)
+
+        print(f"Extinction fit: {npy_name}  K={K:.4f}, m0={m0:.4f}")
+
+        all_star_fits.append({
+            "sid": sid,
+            "label": os.path.splitext(npy_name)[0],
+            "X": Xs, "Y": Ys, "Xfit": Xs, "Yfit": Yfit_sorted,
+            "K": K, "m0": m0
+        })
+    else:
+        print(f"{npy_name}: not enough valid points for extinction fit.")
+
+# ---- Combined overlay ----
+if all_star_fits:
+    fig3, ax3 = plt.subplots(figsize=(8,6))
+    colors = plt.cm.tab10(np.linspace(0,1,max(10,len(all_star_fits))))
+    for i,fit in enumerate(all_star_fits):
+        c = colors[i % len(colors)]
+        ax3.scatter(fit["X"], fit["Y"], s=25, color=c, alpha=0.85, label=fit["label"])
+        ax3.plot(fit["Xfit"], fit["Yfit"], '--', lw=1.5, color=c,
+                 label=f"{fit['label']} K={fit['K']:.3f}")
+    ax3.set_xlabel("Airmass")
+    ax3.set_ylabel("Instrumental magnitude")
+    ax3.set_title("All Stars: Extinction Fits Overlay")
+    ax3.legend(fontsize=8, loc='upper left', ncol=2)
+    ax3.grid(True)
+    if PLOT_SAVEFIG:
+        out_combined = os.path.join(OUTPUT_TABLE_FOLDER, "all_stars_extinction_overlay.png")
+        plt.savefig(out_combined, dpi=150); plt.close(fig3)
+    else:
+        plt.show(); plt.close(fig3)
+else:
+    print("No valid extinction fits to plot in combined overlay.")

@@ -15,9 +15,9 @@ from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes
 
 #════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════#
 # Input values:
-folder_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\Oct 1\Area 95\i\high"  # Folder containing .fit images
-save_directory = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords"  # Where to save star coordinates
-save_filename = "Oct 1 Area 95 i high star coordinates (TEST)"  # Output filename
+folder_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\sept 30 area 95 g low\keep"  # Folder containing .fit images
+save_directory = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction"  # Where to save star coordinates
+save_filename = "Sept30-green-area95-low-star4"  # Output filename
 #════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════#
 
 def open_fits(path):
