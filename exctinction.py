@@ -10,7 +10,7 @@ from ancillary_functions import airmass_function
 import matplotlib.patches as patches
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\sept 30 area 95 green\keep\aligned"
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\low\1 min\aligned"
 OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables")
 os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
 
