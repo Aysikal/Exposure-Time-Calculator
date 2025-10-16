@@ -10,7 +10,7 @@ from astropy.visualization import ZScaleInterval
 # ------------------------------------------------------------
 # Hardcoded folder
 # ------------------------------------------------------------
-FOLDER = r"C:/Users/AYSAN/Desktop/project/INO/ETC/Data/Sep30/Rezaei_30_sep_2025/target3/g/low/1 min/aligned"
+FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\high\2 min\aligned"
 
 # ------------------------------------------------------------
 # Helper Functions

@@ -63,6 +63,11 @@ def reduce_data(raw_folder, masterdark_path, masterflat_path, output_folder):
             print(f"❌ Failed to open {fname}: {e}")
             continue
 
+        # ✅ Handle 3D FITS (take first plane if needed)
+        if raw_data.ndim == 3:
+            print(f"ℹ️ {fname} is 3D {raw_data.shape} → using plane [0]")
+            raw_data = raw_data[0]
+
         # Shape check
         if raw_data.shape != md_data.shape or raw_data.shape != gain_table.shape:
             print(f"❌ Shape mismatch: raw={raw_data.shape}, dark={md_data.shape}, flat={gain_table.shape}")
@@ -79,7 +84,6 @@ def reduce_data(raw_folder, masterdark_path, masterflat_path, output_folder):
         new_hdr['FLATFILE'] = os.path.basename(masterflat_path)
         new_hdr['GAINMAX']  = np.nanmax(mf_data)
         
-
         # Output filename
         base, ext = os.path.splitext(fname)
         outname = f"{base}_dark_and_flat_corrected{ext}"
@@ -97,7 +101,7 @@ if __name__ == "__main__":
     raw_folder    = open_folder_dialog("Select Folder with Raw FITS Frames")
     masterdark    = open_file_dialog("Select MasterDark FITS")
     masterflat    = open_file_dialog("Select MasterFlat FITS")
-    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced"
+    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced and aligned"
 
     reduce_data(raw_folder, masterdark, masterflat, output_folder)
     print("🎉 Reduction complete!")

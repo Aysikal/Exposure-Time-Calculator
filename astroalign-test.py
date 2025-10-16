@@ -12,8 +12,8 @@ from skimage.transform import AffineTransform  # ✅ FIXED import
 # USER PATHS
 # --------------------------------------------------
 
-HIGH_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\high\1 min"
-LOW_FOLDER  = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\low\1 min"
+HIGH_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\high\2 min"
+LOW_FOLDER  = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\low\2 min"
 OUT_HIGH_ALIGNED = os.path.join(HIGH_FOLDER, "aligned")
 OUT_LOW_ALIGNED  = os.path.join(LOW_FOLDER, "aligned")
 TRANSFORM_FILE   = os.path.join(HIGH_FOLDER, "high_transforms.json")
