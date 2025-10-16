@@ -53,7 +53,7 @@ def read_primary(path):
             if "_high_" in fname:
                 data = data[0]  # keep first plane
             elif "_low_" in fname:
-                data = data[1]  # keep second plane
+                data = data[0]  # keep second plane
             else:
                 print(f"⚠️ {fname}: 2 planes detected but no 'High/Low' tag — using first plane.")
                 data = data[0]
