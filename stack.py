@@ -1,67 +1,122 @@
 import os
-from astroquery.astrometry_net import AstrometryNet
+import sys
+import numpy as np
 from astropy.io import fits
-from astropy.wcs import WCS
-from reproject import reproject_interp
-from glob import glob
+from astropy.visualization import ZScaleInterval, ImageNormalize
+import matplotlib.pyplot as plt
 
-# === CONFIG ===
-fits_dir = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\Oct 7 area 95 green high\keep"
-output_dir = os.path.join(fits_dir, "aligned")
-os.makedirs(output_dir, exist_ok=True)
+EXPTIME_KEYS = ["EXPTIME", "EXPOSURE", "EXPTM", "EXPTIM", "TELAPSE"]
 
-# === ASTROMETRY.NET SETUP ===
-ast = AstrometryNet()
-ast.api_key = "pakymwxyricoavhw"
+def list_fits(folder):
+    return sorted(
+        os.path.join(folder, f)
+        for f in os.listdir(folder)
+        if f.lower().endswith((".fit", ".fits"))
+    )
 
-# --- YOUR HINTS ---
-PIXEL_SCALE = 0.047 * 1.8        # arcseconds per pixel (adjust to your setup)
-RA_HINT = 53.123         # degrees (approximate telescope RA center)
-DEC_HINT = +22.456       # degrees (approximate telescope DEC center)
-RADIUS_DEG = 2           # search radius in degrees
+from astropy.io import fits
+import numpy as np
 
-fits_files = sorted(glob(os.path.join(fits_dir, "*.fit")))
-solved_files = []
-
-# === STEP 1: Solve WCS for each FIT ===
-for f in fits_files:
-    print(f"🔭 Solving WCS online for {f} ...")
-    try:
-        wcs_header = ast.solve_from_image(
-            f,
-            scale_units='arcsecperpix',
-            scale_lower=PIXEL_SCALE * 0.8,
-            scale_upper=PIXEL_SCALE * 1.2,
-            center_ra=RA_HINT,
-            center_dec=DEC_HINT,
-            radius=RADIUS_DEG
-        )
-        if wcs_header:
-            with fits.open(f) as hdul:
-                hdul[0].header.update(wcs_header)
-                out = f.replace(".fit", "_wcs.fit")
-                hdul.writeto(out, overwrite=True)
-                solved_files.append(out)
-                print(f"✅ WCS solved and saved to {out}")
+def load_fits(path):
+    """
+    Robust loader for PixInsight-produced FITS:
+    - uses memmap=False so files with BZERO/BSCALE/BLANK open correctly
+    - lets astropy apply scaling (do_not_scale_image_data=False)
+    - converts masked arrays and non-finite values to np.nan
+    - returns (data: 2D float ndarray, header)
+    """
+    with fits.open(path, memmap=False, do_not_scale_image_data=False) as hdul:
+        # find first HDU that contains image data
+        for hdu in hdul:
+            if hdu.data is None:
+                continue
+            data = hdu.data
+            hdr = hdu.header
+            break
         else:
-            print(f"❌ Could not solve {f}")
-    except Exception as e:
-        print(f"⚠️ Error solving {f}: {e}")
+            raise ValueError(f"No image data found in any HDU of {path}")
 
-# === STEP 2: Reference and alignment ===
-if not solved_files:
-    raise RuntimeError("No solved files found!")
+        # If astropy returned a MaskedArray it will already respect BLANK; fill with nan
+        if isinstance(data, np.ma.MaskedArray):
+            data = data.filled(np.nan)
 
-ref_hdu = fits.open(solved_files[0])[0]
-ref_wcs = WCS(ref_hdu.header)
-ref_data = ref_hdu.data
+        # Ensure float dtype and replace inf with nan
+        data = np.asarray(data, dtype=float)
+        data[~np.isfinite(data)] = np.nan
 
-# === STEP 3: Reproject others ===
-for f in solved_files:
-    hdu = fits.open(f)[0]
-    data, _ = reproject_interp(hdu, ref_wcs, shape_out=ref_data.shape)
-    out = os.path.join(output_dir, os.path.basename(f))
-    fits.writeto(out, data, ref_hdu.header, overwrite=True)
-    print(f"🪄 Aligned: {out}")
+    return data, hdr
 
-print("🎯 All images aligned to reference grid!")
+def get_exptime(header):
+    for key in EXPTIME_KEYS:
+        if key in header:
+            try:
+                return float(header[key])
+            except Exception:
+                continue
+    raise KeyError(f"Exposure time not found in header keys: {EXPTIME_KEYS}")
+
+
+def stack_median(fits_list, load_fits, get_exptime=None, skip_bad=True):
+    """
+    Median-stack FITS images without normalizing by exposure time.
+    - fits_list: iterable of file paths
+    - load_fits: callable(path) -> (data, header)
+    - get_exptime: optional callable(header) -> float (used only for validation if provided)
+    - skip_bad: skip files that fail to load or fail validation; collect them in bad_files
+    Returns: (median_image, bad_files) where bad_files is a list of (path, error_str)
+    """
+    stack = []
+    bad_files = []
+    for f in fits_list:
+        try:
+            data, hdr = load_fits(f)
+            # optional validation of exposure time (keeps original behaviour if desired)
+            if get_exptime is not None:
+                exptime = get_exptime(hdr)
+                if exptime <= 0 or not np.isfinite(exptime):
+                    raise ValueError(f"Invalid EXPTIME ({exptime})")
+            # keep NaNs so np.nanmedian can handle pixels missing in some frames
+            stack.append(np.asarray(data, dtype=float))
+        except Exception as e:
+            msg = f"Skipping {os.path.basename(f)}: {e}"
+            if skip_bad:
+                print(msg, file=sys.stderr)
+                bad_files.append((f, str(e)))
+                continue
+            else:
+                raise
+    if not stack:
+        raise ValueError("No valid FITS images to stack after filtering.")
+    arr = np.stack(stack, axis=0)           # shape (N, ny, nx)
+    med = np.nanmedian(arr, axis=0)        # median along the stack axis
+    return med, bad_files
+
+
+def plot_image(image, title="Stacked (counts/s)", cmap="gray_r", figsize=(8,6), savepath=None):
+    interval = ZScaleInterval()
+    vmin, vmax = interval.get_limits(image[np.isfinite(image)])
+    norm = ImageNormalize(vmin=vmin, vmax=vmax)
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(image, origin="lower", cmap=cmap, norm=norm)
+    ax.set_title(title)
+    ax.set_xlabel("X (pix)")
+    ax.set_ylabel("Y (pix)")
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Counts per second")
+    plt.tight_layout()
+    if savepath:
+        fig.savefig(savepath, dpi=200)
+    plt.show()
+
+if __name__ == "__main__":
+    FOLDER = r"C:\Users\AYSAN\Pictures\crab i high"
+    fits_list = list_fits(FOLDER)
+    print(f"Found {len(fits_list)} FITS files.")
+    # pass load_fits and optionally get_exptime into stack_median
+    stacked, bad = stack_median(fits_list, load_fits, get_exptime=None, skip_bad=True)
+    print(f"Stack shape: {stacked.shape}; skipped {len(bad)} files.")
+    out_png = os.path.join(FOLDER, "stacked_median.png")
+    plot_image(stacked, title=f"Median stack of {len(fits_list)-len(bad)} files", savepath=out_png)
+    out_fits = os.path.join(FOLDER, "crab_i_master.fits")
+    fits.writeto(out_fits, stacked, overwrite=True)
+    print("Wrote:", out_fits)

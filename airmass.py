@@ -23,8 +23,8 @@ import matplotlib.dates as mdates
 # -----------------------------------------------------------------------------
 # Site configuration (one place to edit)
 # -----------------------------------------------------------------------------
-SITE_NAME      = "Iran National Observatory"
-SITE_LAT, SITE_LON, SITE_ELEV = 33.674, 51.3188, 3600
+SITE_NAME      = "SUT"
+SITE_LAT, SITE_LON, SITE_ELEV = 35.7017972, 51.3514389, 1200
 SITE_LOCATION  = EarthLocation(lat=SITE_LAT*u.deg,
                                lon=SITE_LON*u.deg,
                                height=SITE_ELEV*u.m)
@@ -39,9 +39,10 @@ def airmass_function(
     minute: int,
     RA: str,
     DEC: str,
+    name: str,
     input_timezone: str = "UTC",
     plot_night_curve: bool = False,
-    n_steps: int = 200
+    n_steps: int = 200,
 ) -> float:
     """
     Compute airmass at a given time (UTC or local) and, optionally,
@@ -150,7 +151,7 @@ def airmass_function(
         cbar.set_label("Airmass (clamped at 3)")
 
         ax.legend(loc='lower right')
-        plt.title(f"{RA} {DEC} — Altitude & Airmass on {date_str}")
+        plt.title(f"{name}: {RA} {DEC} — Altitude & Airmass on {date_str}")
         plt.tight_layout()
         plt.show()
 
@@ -158,23 +159,13 @@ def airmass_function(
 # 1) Compute airmass at 21:00 Asia/Tehran time,
 #    and overlay the full-night curve in local time:
 X_local = airmass_function(
-    "2025-09-30",
+    "2025-10-18",
     hour=21,
     minute=0,
-    RA="23:13:38.8",
-    DEC="+39:25:02.6",
+    RA="01:46:22.2",
+    DEC="+61:12:53",
+    name="NGC 663",
     input_timezone="Asia/Tehran",
     plot_night_curve=True
 )
 
-# 2) Compute airmass at 18:00 UTC,
-#    and overlay the full-night curve in UTC:
-X_utc = airmass_function(
-    "2025-10-08",
-    hour=22,
-    minute=0,
-    RA="23:50:07.67774550480",
-    DEC="+29:15:21.5900515184",
-    input_timezone="Asia/Tehran",
-    plot_night_curve=True
-)

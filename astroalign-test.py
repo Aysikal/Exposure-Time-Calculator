@@ -6,14 +6,14 @@ import json
 import numpy as np
 import astroalign as aa
 from astropy.io import fits
-from skimage.transform import AffineTransform  # ✅ FIXED import
+from skimage.transform import AffineTransform  
 
 # --------------------------------------------------
 # USER PATHS
 # --------------------------------------------------
 
-HIGH_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\high\2 min"
-LOW_FOLDER  = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\low\2 min"
+HIGH_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\u\high"
+LOW_FOLDER  = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\u\low"
 OUT_HIGH_ALIGNED = os.path.join(HIGH_FOLDER, "aligned")
 OUT_LOW_ALIGNED  = os.path.join(LOW_FOLDER, "aligned")
 TRANSFORM_FILE   = os.path.join(HIGH_FOLDER, "high_transforms.json")
@@ -47,7 +47,7 @@ def read_primary(path):
 
         data = np.asarray(data, dtype=float)
 
-        # Handle multi-plane FITS (2 x 2048 x 2048)
+        
         if data.ndim == 3 and data.shape[0] == 2:
             fname = os.path.basename(path).lower()
             if "_high_" in fname:

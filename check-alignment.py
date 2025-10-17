@@ -10,7 +10,7 @@ from astropy.visualization import ZScaleInterval
 # ------------------------------------------------------------
 # Hardcoded folder
 # ------------------------------------------------------------
-FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\high\2 min\aligned"
+FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\high\2 min\sth"
 
 # ------------------------------------------------------------
 # Helper Functions
@@ -59,7 +59,7 @@ def compute_display_limits(img):
     return vmin, vmax
 
 
-def show_blink_sequence(folder, delay=0.3):
+def show_blink_sequence(folder, delay=1):
     """Blink through all FITS images in a folder to check alignment."""
     files = list_fits(folder)
     if len(files) == 0:
