@@ -10,8 +10,8 @@ from ancillary_functions import airmass_function
 import matplotlib.patches as patches
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\u\high\keep\reduced"
-COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\sept 30\u"
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\high\keep\reduced"
+COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\sept 30\g"
 OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables_high")
 os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
 
@@ -160,9 +160,9 @@ for sid, npy_name in enumerate(npy_files, start=1):
             except Exception:
                 airmass_val = np.nan; altitude_val = np.nan
 
-        # Skip if airmass out of acceptable range
-        if not (AIRMASS_MIN <= airmass_val <= AIRMASS_MAX):
-            print(f"Skipping {fname} → airmass {airmass_val:.2f} outside range")
+        # Skip if airmass out of acceptable range or in exclusion zone (1.23–1.25)
+        if not (AIRMASS_MIN <= airmass_val <= AIRMASS_MAX) or (1.21 <= airmass_val <= 1.27):
+            print(f"Skipping {fname} → airmass {airmass_val:.2f} outside range or in exclusion zone")
             continue
 
         exptime_raw = get_exptime_raw_from_header(hdr)
@@ -222,7 +222,6 @@ for sid, npy_name in enumerate(npy_files, start=1):
             K, m0 = float(coeffs[0]), float(coeffs[1])
             Yfit_sorted = np.polyval(coeffs, Xs)
 
-            # Show plot immediately
             fig, ax = plt.subplots(figsize=(6,4))
             ax.scatter(Xs, Ys, s=30, label=f"{os.path.splitext(npy_name)[0]} data")
             ax.plot(Xs, Yfit_sorted, '--', lw=1.5, color='red', label=f"Fit: K={K:.3f}, m0={m0:.3f}")
@@ -231,7 +230,7 @@ for sid, npy_name in enumerate(npy_files, start=1):
             ax.set_title(f"{npy_name}: Extinction Fit")
             ax.legend()
             ax.grid(True)
-            plt.show()
+            #plt.show()
 
             print(f"Extinction fit: {npy_name}  K={K:.4f}, m0={m0:.4f}")
 
