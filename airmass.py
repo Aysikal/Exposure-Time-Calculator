@@ -21,16 +21,23 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 # -----------------------------------------------------------------------------
-# Site configuration (one place to edit)
+# Site configuration
 # -----------------------------------------------------------------------------
-SITE_NAME      = "SUT"
-SITE_LAT, SITE_LON, SITE_ELEV = 35.7017972, 51.3514389, 1200
+SITE_NAME      = "INO"
+SITE_LAT, SITE_LON, SITE_ELEV = 35.674, 51.3188, 3600
 SITE_LOCATION  = EarthLocation(lat=SITE_LAT*u.deg,
                                lon=SITE_LON*u.deg,
                                height=SITE_ELEV*u.m)
 SITE_OBSERVER  = Observer(location=SITE_LOCATION,
                           timezone="UTC",
                           name=SITE_NAME)
+
+# -----------------------------------------------------------------------------
+# Optional custom time range for plotting (local time)
+# -----------------------------------------------------------------------------
+LOCAL_START_TIME = "2025-10-01 01:15"  # format: YYYY-MM-DD HH:MM
+LOCAL_END_TIME   = "2025-10-01 03:58"
+LOCAL_TIMEZONE   = "Asia/Tehran"
 
 # -----------------------------------------------------------------------------
 def airmass_function(
@@ -45,43 +52,19 @@ def airmass_function(
     n_steps: int = 200,
 ) -> float:
     """
-    Compute airmass at a given time (UTC or local) and, optionally,
-    plot the entire night's altitude curve color-mapped by airmass.
-
-    Parameters
-    ----------
-    date_str : str
-        Date in 'YYYY-MM-DD'.
-    hour : int
-        Hour (0–23) in the timezone `input_timezone`.
-    minute : int
-        Minute (0–59).
-    RA : str
-        Right Ascension 'HH:MM:SS'.
-    DEC : str
-        Declination '+DD:MM:SS' or '-DD:MM:SS'.
-    input_timezone : str
-        'UTC' or any tz name like 'Asia/Tehran'.
-    plot_night_curve : bool
-        If True, show altitude vs. time with airmass colormap.
-    n_steps : int
-        Resolution for full-night plot.
-
-    Returns
-    -------
-    float
-        The instantaneous airmass at the specified UTC time.
+    Compute airmass at a given time (UTC or local) and optionally plot
+    the full-night altitude curve color-mapped by airmass.
     """
     # 1) Build timezone objects
     tz_in  = ZoneInfo(input_timezone)
     tz_utc = ZoneInfo("UTC")
 
-    # 2) Convert input date/time to a UTC Time object
+    # 2) Convert input date/time to UTC Time object
     dt_local = datetime.strptime(f"{date_str} {hour:02d}:{minute:02d}",
                                  "%Y-%m-%d %H:%M")
     dt_local = dt_local.replace(tzinfo=tz_in)
     dt_utc   = dt_local.astimezone(tz_utc)
-    obs_time = Time(dt_utc)   # scale defaults to 'utc'
+    obs_time = Time(dt_utc)
 
     # 3) Parse RA/DEC and compute single-time airmass
     ra_h, ra_m, ra_s = map(float, RA.split(":"))
@@ -106,14 +89,18 @@ def airmass_function(
 
     # 4) Optional full-night plot
     if plot_night_curve:
-        # 4a) Build sunset→sunrise grid in UTC
-        mid_day = Time(f"{date_str} 12:00:00", scale="utc")
-        sunset  = SITE_OBSERVER.sun_set_time(mid_day, which="nearest")
-        sunrise = SITE_OBSERVER.sun_rise_time(mid_day, which="next")
-        hours   = (sunrise - sunset).to(u.hour).value
-        times   = sunset + np.linspace(0, hours, n_steps)*u.hour
+        # Convert local start/end to UTC Time objects
+        tz_local = ZoneInfo(LOCAL_TIMEZONE)
+        start_dt = datetime.strptime(LOCAL_START_TIME, "%Y-%m-%d %H:%M").replace(tzinfo=tz_local)
+        end_dt   = datetime.strptime(LOCAL_END_TIME, "%Y-%m-%d %H:%M").replace(tzinfo=tz_local)
+        start_utc = Time(start_dt.astimezone(ZoneInfo("UTC")))
+        end_utc   = Time(end_dt.astimezone(ZoneInfo("UTC")))
 
-        # 4b) Compute altitude & airmass arrays
+        # Build time grid
+        hours = (end_utc - start_utc).to(u.hour).value
+        times = start_utc + np.linspace(0, hours, n_steps)*u.hour
+
+        # Compute altitude & airmass arrays
         altaz = coord.transform_to(AltAz(obstime=times,
                                          location=SITE_LOCATION))
         alts  = altaz.alt.degree
@@ -124,7 +111,7 @@ def airmass_function(
                  + 0.50572*(6.07995 + zs)**(-1.6364)
                 )
 
-        # 4c) Plot
+        # Plot
         norm = plt.Normalize(vmin=1, vmax=3)
         fig, ax = plt.subplots(figsize=(10,5))
         ax.plot_date(times.plot_date, alts, '-k', label='Altitude')
@@ -140,9 +127,9 @@ def airmass_function(
 
         ax.axhline(30, color='gray', ls='--', label='30° Elevation')
         ax.xaxis.set_major_formatter(
-            mdates.DateFormatter("%H:%M", tz=tz_in)
+            mdates.DateFormatter("%H:%M", tz=tz_local)
         )
-        ax.set_xlabel(f"Time ({input_timezone})")
+        ax.set_xlabel(f"Time ({LOCAL_TIMEZONE})")
         ax.set_ylabel("Altitude (°)")
         ax.set_ylim(0, 90)
         ax.grid(True)
@@ -156,16 +143,17 @@ def airmass_function(
         plt.show()
 
     return X0
-# 1) Compute airmass at 21:00 Asia/Tehran time,
-#    and overlay the full-night curve in local time:
+
+# -----------------------------------------------------------------------------
+# Example usage
+# -----------------------------------------------------------------------------
 X_local = airmass_function(
-    "2025-10-18",
+    date_str="2025-10-01",
     hour=21,
     minute=0,
-    RA="01:46:22.2",
-    DEC="+61:12:53",
-    name="NGC 663",
+    RA="03:53:21",
+    DEC="-00:00:20",
+    name="area 95",
     input_timezone="Asia/Tehran",
     plot_night_curve=True
 )
-

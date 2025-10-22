@@ -5,8 +5,8 @@ from astropy.io import fits
 from scipy.optimize import curve_fit
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target3\g\high\keep"
-COORDS_PATH = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\refined_coords.npy"
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\i\high\keep"
+COORDS_PATH = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\sept 30\i\sept30-i-area95-star9.npy"
 PSF_ARCSEC = 0.7
 PIXEL_SCALE = 0.047 * 1.8
 BOX_FACTOR = 10.0
@@ -25,8 +25,7 @@ def load_fits(path):
 
 def gaussian_2d(coord, amplitude, x0, y0, sx, sy, offset):
     x, y = coord
-    g = amplitude * np.exp(-0.5 * (((x - x0) / sx) ** 2 + ((y - y0) / sy) ** 2)) + offset
-    return g
+    return amplitude * np.exp(-0.5 * (((x - x0) / sx) ** 2 + ((y - y0) / sy) ** 2)) + offset
 
 # ---------------- Main logic ----------------
 fits_files = list_fits(ALIGNED_FOLDER)
@@ -34,8 +33,12 @@ if not fits_files:
     raise SystemExit("No FITS files found.")
 
 coords = np.load(COORDS_PATH)
-if coords.shape[1] < 4:
-    raise SystemExit("Coordinate file must have at least 4 columns: [orig_y, orig_x, refined_y, refined_x]")
+if coords.ndim != 2 or coords.shape[1] < 2:
+    raise SystemExit("Coordinate file must have at least 2 columns: [orig_y, orig_x]")
+
+# Prepare coordinate array
+if coords.shape[1] == 2:
+    coords = np.hstack([coords, np.full((coords.shape[0], 2), np.nan)])
 
 refined_coords = []
 cutouts = []
@@ -49,9 +52,7 @@ for idx, fname in enumerate(fits_files):
     orig_y, orig_x, refined_y, refined_x = coords[idx]
 
     if not (np.isfinite(refined_x) and np.isfinite(refined_y)):
-        print(f"⏭️ Skipping {fname} — refined coords missing or invalid")
-        refined_coords.append([orig_y, orig_x, np.nan, np.nan])
-        continue
+        refined_y, refined_x = orig_y, orig_x
 
     x_star, y_star = float(refined_x), float(refined_y)
     half_box = box_size_px // 2

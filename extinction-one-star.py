@@ -10,9 +10,9 @@ from ancillary_functions import airmass_function
 import matplotlib.patches as patches
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target3\r\low\keep\aligned"
-COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\r"
-OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables_low")
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\r\high\keep\reduced"
+COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\sept 30\r"
+OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables_high")
 os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
 
 RA_HARD, DEC_HARD = "03:53:21", "-00:00:20"
@@ -25,7 +25,7 @@ SITE_TZ_NAME = "Asia/Tehran"
 PLOT_SAVEFIG = True
 
 # ---------------- AIR MASS FILTER ----------------
-AIRMASS_MIN = 1.22
+AIRMASS_MIN = 1
 AIRMASS_MAX = 2.5
 
 pixels_per_arcsec = PIXEL_SCALE
@@ -258,7 +258,7 @@ if all_star_fits:
                  label=f"{fit['label']} K={fit['K']:.3f}")
     ax3.set_xlabel("Airmass")
     ax3.set_ylabel("Instrumental magnitude")
-    ax3.set_title("All Stars: Extinction Fits Overlay (low))")
+    ax3.set_title("All Stars: Extinction Fits Overlay (high)")
     ax3.legend(fontsize=8, loc='upper left', ncol=2)
     ax3.grid(True)
     plt.show()

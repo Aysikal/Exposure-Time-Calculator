@@ -3,8 +3,8 @@ import shutil
 import re
 
 # ---------------- CONFIG ----------------
-HIGH_KEEP = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\r\high\keep"
-LOW_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\r\low"
+HIGH_KEEP = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\i\high\keep"
+LOW_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\i\low"
 LOW_KEEP = os.path.join(LOW_FOLDER, "keep")
 os.makedirs(LOW_KEEP, exist_ok=True)
 

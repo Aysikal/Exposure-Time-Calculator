@@ -101,7 +101,7 @@ if __name__ == "__main__":
     raw_folder    = open_folder_dialog("Select Folder with Raw FITS Frames")
     masterdark    = open_file_dialog("Select MasterDark FITS")
     masterflat    = open_file_dialog("Select MasterFlat FITS")
-    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target3\r\low\keep\aligned"
+    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\r\low\keep\reduced"
 
     reduce_data(raw_folder, masterdark, masterflat, output_folder)
     print("🎉 Reduction complete!")
