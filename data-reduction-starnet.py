@@ -19,7 +19,7 @@ def build_gain_table(flat_data):
     medval = np.nanmedian(flat_data)
     print(f"🔧 MasterFlat median value: {medval}")
     if medval == 0:
-        raise ValueError("MasterFlat has zero max value; cannot normalize.")
+        raise ValueError("MasterFlat has zero median value; cannot normalize.")
     return flat_data / medval
 
 def reduce_data(raw_folder, masterdark_path, masterflat_path, output_folder):
@@ -68,6 +68,12 @@ def reduce_data(raw_folder, masterdark_path, masterflat_path, output_folder):
             print(f"ℹ️ {fname} is 3D {raw_data.shape} → using plane [0]")
             raw_data = raw_data[0]
 
+        # Rescale StarNet++ output back to original dynamic range
+        raw_min, raw_max = np.nanmin(raw_data), np.nanmax(raw_data)
+        scale_max = raw_hdr.get('SCALEMAX', 65535)
+        print(f"📉 Rescaling StarNet++ image: min={raw_min:.4f}, max={raw_max:.4f}, scale={scale_max}")
+        raw_data = raw_data * scale_max
+
         # Shape check
         if raw_data.shape != md_data.shape or raw_data.shape != gain_table.shape:
             print(f"❌ Shape mismatch: raw={raw_data.shape}, dark={md_data.shape}, flat={gain_table.shape}")
@@ -79,14 +85,15 @@ def reduce_data(raw_folder, masterdark_path, masterflat_path, output_folder):
         # Build new header
         new_hdr = raw_hdr.copy()
         new_hdr['AUTHOR']   = "Aysan Hemmati"
-        new_hdr['HISTORY']  = "Dark-subtracted and flat-field corrected."
+        new_hdr['HISTORY']  = "StarNet++ rescaled, dark-subtracted, and flat-field corrected."
         new_hdr['DARKFILE'] = os.path.basename(masterdark_path)
         new_hdr['FLATFILE'] = os.path.basename(masterflat_path)
         new_hdr['GAINMAX']  = np.nanmax(mf_data)
-        
+        new_hdr['SCALEMAX'] = scale_max
+
         # Output filename
         base, ext = os.path.splitext(fname)
-        outname = f"{base}_dark_and_flat_corrected{ext}"
+        outname = f"{base}_rescaled_dark_flat{ext}"
         outpath = os.path.join(output_folder, outname)
 
         # Write corrected FITS
@@ -98,10 +105,10 @@ def reduce_data(raw_folder, masterdark_path, masterflat_path, output_folder):
             print(f"❌ Failed to write {outname}: {e}\n")
 
 if __name__ == "__main__":
-    raw_folder    = open_folder_dialog("Select Folder with Raw FITS Frames")
+    raw_folder    = open_folder_dialog("Select Folder with StarNet++ FITS Frames")
     masterdark    = open_file_dialog("Select MasterDark FITS")
     masterflat    = open_file_dialog("Select MasterFlat FITS")
-    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target3\r\low\keep\aligned"
+    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced and aligned"
 
     reduce_data(raw_folder, masterdark, masterflat, output_folder)
     print("🎉 Reduction complete!")

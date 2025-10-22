@@ -25,8 +25,8 @@ pixel_scale = 0.047 * 1.8
 color = "Grays"
 filter = "g"
 mode = "High"
-folder_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\October 8th area 95 green high\keep"
-star_coordinates_loc = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\Oct 8 Area 95 g high star coordinates.npy"
+folder_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target3\g\high\keep"
+star_coordinates_loc = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct1-g-area95-star3.npy"
 specific_plot_idx = 0
 #════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════#
 
@@ -72,8 +72,8 @@ FWHM = []
 
 for idx, file_path in enumerate(image_files):
     data = open_fits(file_path)
-    y_center = int(round(star_coordinates[idx][0]))
-    x_center = int(round(star_coordinates[idx][1]))
+    y_center = int(round(star_coordinates[idx][2]))
+    x_center = int(round(star_coordinates[idx][3]))
 
     y_start = max(0, y_center - box_size // 2)
     y_end = min(data.shape[0], y_center + box_size // 2)
@@ -170,3 +170,5 @@ for ax in axes_box[num_profiles:]:
 plt.tight_layout()
 plt.subplots_adjust(hspace=0.5, wspace=0.5)
 plt.show()
+
+print(f"Median of PSF {median_fwhm}")

@@ -109,7 +109,7 @@ def plot_image(image, title="Stacked (counts/s)", cmap="gray_r", figsize=(8,6), 
     plt.show()
 
 if __name__ == "__main__":
-    FOLDER = r"C:\Users\AYSAN\Pictures\crab i high"
+    FOLDER = r"C:\Users\AYSAN\Desktop\Crab\g\high\reduced"
     fits_list = list_fits(FOLDER)
     print(f"Found {len(fits_list)} FITS files.")
     # pass load_fits and optionally get_exptime into stack_median
@@ -117,6 +117,6 @@ if __name__ == "__main__":
     print(f"Stack shape: {stacked.shape}; skipped {len(bad)} files.")
     out_png = os.path.join(FOLDER, "stacked_median.png")
     plot_image(stacked, title=f"Median stack of {len(fits_list)-len(bad)} files", savepath=out_png)
-    out_fits = os.path.join(FOLDER, "crab_i_master.fits")
+    out_fits = os.path.join(FOLDER, "reduced_crab_g_master_with_stars.fits")
     fits.writeto(out_fits, stacked, overwrite=True)
     print("Wrote:", out_fits)

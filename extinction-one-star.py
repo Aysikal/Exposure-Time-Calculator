@@ -10,9 +10,9 @@ from ancillary_functions import airmass_function
 import matplotlib.patches as patches
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\sept 30 area 95 g low\keep"
-COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction"
-OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables")
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target3\r\low\keep\aligned"
+COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\r"
+OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables_low")
 os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
 
 RA_HARD, DEC_HARD = "03:53:21", "-00:00:20"
@@ -22,7 +22,11 @@ BOX_FACTOR, REFINE_RADIUS_FACTOR = 10.0, 10.0
 Z = ZScaleInterval()
 K_AP, ANN_IN_FACT, ANN_OUT_FACT = 1.0, 3.0, 5.0
 SITE_TZ_NAME = "Asia/Tehran"
-PLOT_SAVEFIG = False
+PLOT_SAVEFIG = True
+
+# ---------------- AIR MASS FILTER ----------------
+AIRMASS_MIN = 1.22
+AIRMASS_MAX = 2.5
 
 pixels_per_arcsec = PIXEL_SCALE
 box_size_px = round((BOX_FACTOR * PSF_ARCSEC) / pixels_per_arcsec)
@@ -39,8 +43,10 @@ def list_fits(folder):
     return sorted([f for f in os.listdir(folder) if f.lower().endswith(('.fits', '.fit'))])
 
 def load_fits(path):
-    with fits.open(path, memmap=True) as hdul:
-        return np.nan_to_num(hdul[0].data.astype(float)), hdul[0].header
+    with fits.open(path, memmap=False) as hdul:
+        data = np.nan_to_num(hdul[0].data.astype(float))
+        header = hdul[0].header
+    return data, header
 
 def get_exptime_raw_from_header(hdr):
     for key in ("DURATION","EXPTIME","EXPOSURE","EXPTIM","ITIME","ONTIME","TELAPSE"):
@@ -54,7 +60,7 @@ def get_exptime_raw_from_header(hdr):
 
 def exptime_seconds_from_raw(raw_val):
     if raw_val is None: return np.nan
-    try: return float(raw_val)*1e-5
+    try: return float(raw_val)
     except Exception: return np.nan
 
 def parse_dateobs_token(hdr):
@@ -127,15 +133,16 @@ for sid, npy_name in enumerate(npy_files, start=1):
     print(f"\nProcessing {npy_name} (star {sid})")
 
     records = []
-    cutout_imgs = []
-    cutout_centers = []
-    cutout_names = []
 
     for idx, fname in enumerate(fits_files):
-        data, hdr = load_fits(os.path.join(ALIGNED_FOLDER, fname))
-        y_star, x_star = coords[idx]  # (y, x) order expected
+        y_star, x_star = coords[idx, 2], coords[idx, 3]  # refined coordinates
 
-        # refine centroid slightly in a local box
+        if np.isnan(y_star) or np.isnan(x_star):
+            print(f"Skipping {fname} for {npy_name} → no refined coordinates")
+            continue
+
+        data, hdr = load_fits(os.path.join(ALIGNED_FOLDER, fname))
+
         cut = Cutout2D(data, (x_star, y_star), REFINE_BOX, mode='partial')
         cx, cy = centroid_in_array(cut.data)
         x_star = x_star - cut.data.shape[1]/2 + cx
@@ -153,16 +160,17 @@ for sid, npy_name in enumerate(npy_files, start=1):
             except Exception:
                 airmass_val = np.nan; altitude_val = np.nan
 
+        # Skip if airmass out of acceptable range
+        if not (AIRMASS_MIN <= airmass_val <= AIRMASS_MAX):
+            print(f"Skipping {fname} → airmass {airmass_val:.2f} outside range")
+            continue
+
         exptime_raw = get_exptime_raw_from_header(hdr)
         exptime_s = exptime_seconds_from_raw(exptime_raw)
 
         disp_cut = Cutout2D(data, (x_star, y_star), box_size_px, mode='partial')
         disp_data = np.nan_to_num(disp_cut.data)
         cx_disp, cy_disp = disp_cut.to_cutout_position((x_star, y_star))
-
-        cutout_imgs.append(disp_data)
-        cutout_centers.append((cx_disp, cy_disp))
-        cutout_names.append(os.path.basename(fname))
 
         ap_mask, ann_mask = make_masks(disp_data.shape, (cx_disp, cy_disp),
                                        FIXED_AP_RADIUS_PX, ANN_IN_FACT*PSF_PIX_REF, ANN_OUT_FACT*PSF_PIX_REF)
@@ -190,51 +198,54 @@ for sid, npy_name in enumerate(npy_files, start=1):
         })
 
     # ---- Save CSV ----
-    records_sorted = sorted(records, key=lambda r: (r["dt_utc_obj"] if r["dt_utc_obj"] is not None else r["time_utc"]))
-    csv_path = os.path.join(OUTPUT_TABLE_FOLDER, f"star_{sid:02d}_photometry.csv")
-    csv_fieldnames = [k for k in records_sorted[0].keys() if k != "dt_utc_obj"]
-    with open(csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=csv_fieldnames)
-        writer.writeheader()
-        for row in records_sorted:
-            row_out = {k: (v if k!="dt_utc_obj" else "") for k,v in row.items() if k != "dt_utc_obj"}
-            writer.writerow(row_out)
-    print(f"Saved CSV → {csv_path}")
+    if records:
+        records_sorted = sorted(records, key=lambda r: (r["dt_utc_obj"] if r["dt_utc_obj"] is not None else r["time_utc"]))
+        csv_path = os.path.join(OUTPUT_TABLE_FOLDER, f"star_{sid:02d}_photometry.csv")
+        csv_fieldnames = [k for k in records_sorted[0].keys() if k != "dt_utc_obj"]
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=csv_fieldnames)
+            writer.writeheader()
+            for row in records_sorted:
+                row_out = {k: (v if k!="dt_utc_obj" else "") for k,v in row.items() if k != "dt_utc_obj"}
+                writer.writerow(row_out)
+        print(f"Saved CSV → {csv_path}")
 
-    # ---- Extinction fit ----
-    airmass_arr = np.array([r["airmass"] for r in records_sorted], float)
-    mag_arr = np.array([r["instrumental_mag"] for r in records_sorted], float)
-    mask = np.isfinite(airmass_arr) & np.isfinite(mag_arr)
-    if np.count_nonzero(mask) > 2:
-        X = airmass_arr[mask]; Y = mag_arr[mask]
-        order = np.argsort(X)
-        Xs, Ys = X[order], Y[order]
-        coeffs = np.polyfit(Xs, Ys, 1)
-        K, m0 = float(coeffs[0]), float(coeffs[1])
-        Yfit_sorted = np.polyval(coeffs, Xs)
+        # ---- Extinction fit ----
+        airmass_arr = np.array([r["airmass"] for r in records_sorted], float)
+        mag_arr = np.array([r["instrumental_mag"] for r in records_sorted], float)
+        mask = np.isfinite(airmass_arr) & np.isfinite(mag_arr)
+        if np.count_nonzero(mask) > 2:
+            X = airmass_arr[mask]; Y = mag_arr[mask]
+            order = np.argsort(X)
+            Xs, Ys = X[order], Y[order]
+            coeffs = np.polyfit(Xs, Ys, 1)
+            K, m0 = float(coeffs[0]), float(coeffs[1])
+            Yfit_sorted = np.polyval(coeffs, Xs)
 
-        fig, ax = plt.subplots(figsize=(6,4))
-        ax.scatter(Xs, Ys, s=30, label=f"{os.path.splitext(npy_name)[0]}")
-        ax.plot(Xs, Yfit_sorted, '--', lw=1.5, label=f"K={K:.3f}, m₀={m0:.3f}")
-        ax.set_xlabel("Airmass"); ax.set_ylabel("Instrumental mag")
-        ax.set_title(f"{npy_name}: Extinction Fit")
-        ax.legend(); ax.grid(True)
-        if PLOT_SAVEFIG:
-            out_fit = os.path.join(OUTPUT_TABLE_FOLDER, f"{os.path.splitext(npy_name)[0]}_fit.png")
-            plt.savefig(out_fit, dpi=150); plt.close(fig)
+            # Show plot immediately
+            fig, ax = plt.subplots(figsize=(6,4))
+            ax.scatter(Xs, Ys, s=30, label=f"{os.path.splitext(npy_name)[0]} data")
+            ax.plot(Xs, Yfit_sorted, '--', lw=1.5, color='red', label=f"Fit: K={K:.3f}, m0={m0:.3f}")
+            ax.set_xlabel("Airmass")
+            ax.set_ylabel("Instrumental Magnitude")
+            ax.set_title(f"{npy_name}: Extinction Fit")
+            ax.legend()
+            ax.grid(True)
+            plt.show()
+
+            print(f"Extinction fit: {npy_name}  K={K:.4f}, m0={m0:.4f}")
+
+            all_star_fits.append({
+                "sid": sid,
+                "label": os.path.splitext(npy_name)[0],
+                "X": Xs, "Y": Ys,
+                "Xfit": Xs, "Yfit": Yfit_sorted,
+                "K": K, "m0": m0
+            })
         else:
-            plt.show(); plt.close(fig)
-
-        print(f"Extinction fit: {npy_name}  K={K:.4f}, m0={m0:.4f}")
-
-        all_star_fits.append({
-            "sid": sid,
-            "label": os.path.splitext(npy_name)[0],
-            "X": Xs, "Y": Ys, "Xfit": Xs, "Yfit": Yfit_sorted,
-            "K": K, "m0": m0
-        })
+            print(f"{npy_name}: not enough valid points for extinction fit.")
     else:
-        print(f"{npy_name}: not enough valid points for extinction fit.")
+        print(f"{npy_name}: no valid refined coordinates found, skipping.")
 
 # ---- Combined overlay ----
 if all_star_fits:
@@ -247,13 +258,9 @@ if all_star_fits:
                  label=f"{fit['label']} K={fit['K']:.3f}")
     ax3.set_xlabel("Airmass")
     ax3.set_ylabel("Instrumental magnitude")
-    ax3.set_title("All Stars: Extinction Fits Overlay")
+    ax3.set_title("All Stars: Extinction Fits Overlay (low))")
     ax3.legend(fontsize=8, loc='upper left', ncol=2)
     ax3.grid(True)
-    if PLOT_SAVEFIG:
-        out_combined = os.path.join(OUTPUT_TABLE_FOLDER, "all_stars_extinction_overlay.png")
-        plt.savefig(out_combined, dpi=150); plt.close(fig3)
-    else:
-        plt.show(); plt.close(fig3)
+    plt.show()
 else:
     print("No valid extinction fits to plot in combined overlay.")
