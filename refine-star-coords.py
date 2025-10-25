@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 
 # ---------------- CONFIG ----------------
 ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\i\high\keep"
-COORDS_PATH = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\oct7-i-94B2.npy"
+COORDS_PATH = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-i-94B2.npy"
 PSF_ARCSEC = 1
 PIXEL_SCALE = 0.047 * 1.8
 BOX_FACTOR = 10.0
@@ -17,7 +17,7 @@ if box_size_px % 2 == 0:
 
 # --- Overexposure detection threshold (12-bit CCD) ---
 CCD_LIMIT = 4095
-OVEREXPOSURE_THRESHOLD = 4090 
+OVEREXPOSURE_THRESHOLD = 4080
 
 # ---------------- Helpers ----------------
 def list_fits(folder):

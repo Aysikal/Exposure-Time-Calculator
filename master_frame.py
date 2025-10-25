@@ -11,15 +11,15 @@ import reza
 from scipy.ndimage import median_filter, generic_filter
 
 # --- Hardcoded Mode Tag ---
-MODE_TAG = "HIGH"
+MODE_TAG = "LOW"
 
 # --- Regex for extracting color token from flat filenames ---
 COLOR_PATTERN = re.compile(r'_(u|g|r|i|clear)_', re.IGNORECASE)
 
 # --- Paths ---
 SPREADSHEET_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\spreadsheets"
-MASTER_OUTPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\Oct 1 masterdarks\HIGH"
-PLOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\plots\high darks"
+MASTER_OUTPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\Oct 1 masterdarks\LOW"
+PLOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\plots\low darks"
 # --- Utilities ---
 def open_folder_dialog(title="Select Folder"):
     root = Tk()

@@ -1,4 +1,4 @@
-# extinction_pipeline_fixed_aperture_netpos_filter_POSITIVE_K_UTCcheck_npy_multi.py
+# extinction_pipeline_fixed_aperture_netpos_filter_POSITIVE_K_UTCcheck_npy_multi_FIXED_SIGMACLIP.py
 
 import os, math, csv, numpy as np, matplotlib.pyplot as plt
 from datetime import datetime
@@ -6,16 +6,17 @@ import pytz
 from astropy.io import fits
 from astropy.nddata import Cutout2D
 from astropy.visualization import ZScaleInterval
+from astropy.nddata.utils import NoOverlapError
 from ancillary_functions import airmass_function
 import matplotlib.patches as patches
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\u\high\keep\reduced"
-COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\sept 30\u"
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target2\i\high\keep\reduced"
+COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\i\area 92"
 OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables_high")
 os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
 
-RA_HARD, DEC_HARD = "03:53:21", "-00:00:20"
+RA_HARD, DEC_HARD = "00:54:52", "00:40:20"
 PSF_ARCSEC = 0.7
 PIXEL_SCALE = 0.047 * 1.8
 BOX_FACTOR, REFINE_RADIUS_FACTOR = 10.0, 10.0
@@ -42,9 +43,11 @@ print(f"Using fixed aperture {FIXED_AP_RADIUS_PX:.3f}px  box={box_size_px}, refi
 def list_fits(folder):
     return sorted([f for f in os.listdir(folder) if f.lower().endswith(('.fits', '.fit'))])
 
-def load_fits(path):
-    with fits.open(path, memmap=False) as hdul:
-        data = np.nan_to_num(hdul[0].data.astype(float))
+from astropy.io import fits
+
+def load_fits(fits_path):
+    with fits.open(fits_path, memmap=False) as hdul:
+        data = hdul[0].data.astype(float)
         header = hdul[0].header
     return data, header
 
@@ -131,22 +134,38 @@ for sid, npy_name in enumerate(npy_files, start=1):
         continue
 
     print(f"\nProcessing {npy_name} (star {sid})")
-
     records = []
 
     for idx, fname in enumerate(fits_files):
-        y_star, x_star = coords[idx, 2], coords[idx, 3]  # refined coordinates
+        y_star, x_star = coords[idx, 2], coords[idx, 3]
 
         if np.isnan(y_star) or np.isnan(x_star):
             print(f"Skipping {fname} for {npy_name} → no refined coordinates")
             continue
 
         data, hdr = load_fits(os.path.join(ALIGNED_FOLDER, fname))
+        ny, nx = data.shape
 
-        cut = Cutout2D(data, (x_star, y_star), REFINE_BOX, mode='partial')
+        if not (0 <= x_star < nx and 0 <= y_star < ny):
+            print(f"⚠️ Skipping {fname} for {npy_name}: coords ({x_star:.2f},{y_star:.2f}) outside image bounds ({nx},{ny})")
+            continue
+
+        try:
+            cut = Cutout2D(data, (x_star, y_star), REFINE_BOX, mode='partial')
+        except NoOverlapError:
+            print(f"⚠️ No overlap for refine Cutout2D in {fname} — skipping")
+            continue
+        except Exception as e:
+            print(f"⚠️ Error creating refine cutout for {fname}: {e}")
+            continue
+
         cx, cy = centroid_in_array(cut.data)
         x_star = x_star - cut.data.shape[1]/2 + cx
         y_star = y_star - cut.data.shape[0]/2 + cy
+
+        if not (0 <= x_star < nx and 0 <= y_star < ny):
+            print(f"⚠️ After centroid refine coords out of bounds for {fname}")
+            continue
 
         token = parse_dateobs_token(hdr)
         date_utc_str, hour_utc, minute_utc, dt_utc = local_token_to_utc_components(token)
@@ -160,7 +179,6 @@ for sid, npy_name in enumerate(npy_files, start=1):
             except Exception:
                 airmass_val = np.nan; altitude_val = np.nan
 
-        # Skip if airmass out of acceptable range
         if not (AIRMASS_MIN <= airmass_val <= AIRMASS_MAX):
             print(f"Skipping {fname} → airmass {airmass_val:.2f} outside range")
             continue
@@ -168,7 +186,15 @@ for sid, npy_name in enumerate(npy_files, start=1):
         exptime_raw = get_exptime_raw_from_header(hdr)
         exptime_s = exptime_seconds_from_raw(exptime_raw)
 
-        disp_cut = Cutout2D(data, (x_star, y_star), box_size_px, mode='partial')
+        try:
+            disp_cut = Cutout2D(data, (x_star, y_star), box_size_px, mode='partial')
+        except NoOverlapError:
+            print(f"⚠️ No overlap for display Cutout2D in {fname} — skipping")
+            continue
+        except Exception as e:
+            print(f"⚠️ Error creating display cutout for {fname}: {e}")
+            continue
+
         disp_data = np.nan_to_num(disp_cut.data)
         cx_disp, cy_disp = disp_cut.to_cutout_position((x_star, y_star))
 
@@ -222,43 +248,64 @@ for sid, npy_name in enumerate(npy_files, start=1):
             K, m0 = float(coeffs[0]), float(coeffs[1])
             Yfit_sorted = np.polyval(coeffs, Xs)
 
-            # Show plot immediately
+            # Sigma-clipping refinement
+            residuals = Ys - Yfit_sorted
+            std_resid = np.std(residuals)
+            threshold = 2.5 * std_resid
+            inliers = np.abs(residuals) < threshold
+            Xs_in, Ys_in = Xs[inliers], Ys[inliers]
+            coeffs_refined = np.polyfit(Xs_in, Ys_in, 1)
+            K_refined, m0_refined = coeffs_refined
+
+            # Plot refined fit with rejected points
             fig, ax = plt.subplots(figsize=(6,4))
-            ax.scatter(Xs, Ys, s=30, label=f"{os.path.splitext(npy_name)[0]} data")
-            ax.plot(Xs, Yfit_sorted, '--', lw=1.5, color='red', label=f"Fit: K={K:.3f}, m0={m0:.3f}")
+            ax.scatter(Xs_in, Ys_in, s=30, label="Inlier data")
+            ax.scatter(Xs[~inliers], Ys[~inliers], s=30, color='red', alpha=0.5, label="Rejected")
+            ax.plot(Xs_in, np.polyval(coeffs_refined, Xs_in), '--', lw=1.5, color='green',
+                    label=f"Refined Fit: K={K_refined:.3f}, m0={m0_refined:.3f}")
             ax.set_xlabel("Airmass")
             ax.set_ylabel("Instrumental Magnitude")
-            ax.set_title(f"{npy_name}: Extinction Fit")
+            ax.set_title(f"{npy_name}: Refined Extinction Fit")
             ax.legend()
             ax.grid(True)
             plt.show()
 
-            print(f"Extinction fit: {npy_name}  K={K:.4f}, m0={m0:.4f}")
+            print(f"Extinction fit (refined): {npy_name}  K={K_refined:.4f}, m0={m0_refined:.4f}")
+
+            # Store sigma-clipped (refined) fit for combined overlay
+            Xfit_refined = np.linspace(Xs_in.min(), Xs_in.max(), 100)
+            Yfit_refined = np.polyval(coeffs_refined, Xfit_refined)
 
             all_star_fits.append({
                 "sid": sid,
                 "label": os.path.splitext(npy_name)[0],
-                "X": Xs, "Y": Ys,
-                "Xfit": Xs, "Yfit": Yfit_sorted,
-                "K": K, "m0": m0
+                "X": Xs_in,
+                "Y": Ys_in,
+                "Xfit": Xfit_refined,
+                "Yfit": Yfit_refined,
+                "K": K_refined,
+                "m0": m0_refined
             })
         else:
             print(f"{npy_name}: not enough valid points for extinction fit.")
     else:
         print(f"{npy_name}: no valid refined coordinates found, skipping.")
 
-# ---- Combined overlay ----
+
+# ---- Combined Overlay ----
 if all_star_fits:
-    fig3, ax3 = plt.subplots(figsize=(8,6))
-    colors = plt.cm.tab10(np.linspace(0,1,max(10,len(all_star_fits))))
-    for i,fit in enumerate(all_star_fits):
+    fig3, ax3 = plt.subplots(figsize=(8, 6))
+    colors = plt.cm.tab10(np.linspace(0, 1, max(10, len(all_star_fits))))
+
+    for i, fit in enumerate(all_star_fits):
         c = colors[i % len(colors)]
         ax3.scatter(fit["X"], fit["Y"], s=25, color=c, alpha=0.85, label=fit["label"])
         ax3.plot(fit["Xfit"], fit["Yfit"], '--', lw=1.5, color=c,
                  label=f"{fit['label']} K={fit['K']:.3f}")
+
     ax3.set_xlabel("Airmass")
-    ax3.set_ylabel("Instrumental magnitude")
-    ax3.set_title("All Stars: Extinction Fits Overlay (high)")
+    ax3.set_ylabel("Instrumental Magnitude")
+    ax3.set_title("All Stars: Sigma-Clipped Extinction Fits Overlay")
     ax3.legend(fontsize=8, loc='upper left', ncol=2)
     ax3.grid(True)
     plt.show()

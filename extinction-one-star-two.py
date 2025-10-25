@@ -10,13 +10,13 @@ from ancillary_functions import airmass_function
 import matplotlib.patches as patches
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\g\high\keep\reduced"
-COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\sept 30\g"
-OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables_high")
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target2\g\low\keep\reduced"
+COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\g\area 92"
+OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables_low")
 os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
 
-RA_HARD, DEC_HARD = "03:53:21", "-00:00:20"
-PSF_ARCSEC = 0.7
+RA_HARD, DEC_HARD = "00:54:52", "00:40:20"
+PSF_ARCSEC = 1
 PIXEL_SCALE = 0.047 * 1.8
 BOX_FACTOR, REFINE_RADIUS_FACTOR = 10.0, 10.0
 Z = ZScaleInterval()
@@ -161,7 +161,7 @@ for sid, npy_name in enumerate(npy_files, start=1):
                 airmass_val = np.nan; altitude_val = np.nan
 
         # Skip if airmass out of acceptable range or in exclusion zone (1.23–1.25)
-        if not (AIRMASS_MIN <= airmass_val <= AIRMASS_MAX) or (1.21 <= airmass_val <= 1.27):
+        if not (AIRMASS_MIN <= airmass_val <= AIRMASS_MAX) or (1.25 <= airmass_val <= 1.36):
             print(f"Skipping {fname} → airmass {airmass_val:.2f} outside range or in exclusion zone")
             continue
 
@@ -257,7 +257,7 @@ if all_star_fits:
                  label=f"{fit['label']} K={fit['K']:.3f}")
     ax3.set_xlabel("Airmass")
     ax3.set_ylabel("Instrumental magnitude")
-    ax3.set_title("All Stars: Extinction Fits Overlay (high)")
+    ax3.set_title("All Stars: Extinction Fits Overlay (low)")
     ax3.legend(fontsize=8, loc='upper left', ncol=2)
     ax3.grid(True)
     plt.show()

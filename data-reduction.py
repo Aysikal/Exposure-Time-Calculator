@@ -132,7 +132,7 @@ def reduce_data(raw_folder, masterdark_map, masterflat_path, output_folder):
 if __name__ == "__main__":
     raw_folder    = open_folder_dialog("Select Folder with Raw FITS Frames")
     masterflat    = open_file_dialog("Select MasterFlat FITS")
-    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\clear\high\keep\reduced"
+    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\r\high\keep\reduced"
 
     # Gather raw file list first
     raw_files = sorted(f for f in os.listdir(raw_folder) if f.lower().endswith((".fits", ".fit")))

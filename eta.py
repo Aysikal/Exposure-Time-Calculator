@@ -1,31 +1,40 @@
-# ======================================================
-# Aperture + Annulus Photometry: Filter vs Clear Master Comparison (EXPTIME-normalized)
-# ======================================================
-
 import os
 import numpy as np
 from astropy.io import fits
-from astropy.visualization import ZScaleInterval, ImageNormalize
-import matplotlib.pyplot as plt
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # ------------------------------------------------------
-# CONFIGURATION (edit these two paths only)
+# CONFIGURATION
 # ------------------------------------------------------
-CLEAR_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced and aligned\sept 30 area 95 clear HIGH 2 min"
-FILTER_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced and aligned\sept 30 area 95 g HIGH 2 min"
-FILTER_NAME = "g"   # <-- label for the colored filter
+FILTER_FOLDERS = {
+    "clear": r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\clear\high\keep\reduced",
+    "g":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\g\high\keep\reduced",
+    "r":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\r\high\keep\reduced",
+    "i":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\i\high\keep\reduced"
+}
+STAR_COORD_FILES = {
+    "clear": r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-clear-94B2.npy",
+    "g":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-g-94B2.npy",
+    "r":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-r-94B2.npy",
+    "i":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-i-94B2.npy"
+}
 
-# Photometry parameters
-PSF_ARCSEC = 0.7
-PIXEL_SCALE = 0.047 * 1.8  # arcsec/pix
-AP_DIAM_ARCSEC = 2.35 * PSF_ARCSEC
-AP_RADIUS_PIX = (AP_DIAM_ARCSEC / PIXEL_SCALE) / 2.0
-ANN_INNER = 2.4 * AP_RADIUS_PIX
-ANN_OUTER = 3.0 * AP_RADIUS_PIX
+STAR_NAME = "94B2"
+OUTPUT_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2"
 
-# Exposure time keys (case-insensitive)
-EXPTIME_KEYS = ["EXPTIME", "EXPOSURE", "EXPTM", "EXPTIM", "TELAPSE"]
+
+# Updated: dynamically match the box size used in .npy creation
+PSF_ARCSEC = 1
+PIXEL_SCALE = 0.047 * 1.8
+BOX_FACTOR = 10.0
+BOX_SIZE_PX = round((BOX_FACTOR * PSF_ARCSEC) / PIXEL_SCALE)
+if BOX_SIZE_PX % 2 == 0:
+    BOX_SIZE_PX += 1
+BOX_HALF_SIZE = BOX_SIZE_PX // 2
+
+EXPTIME_KEY = "EXPTIME"
+SAVE_FIGS = True
 
 # ------------------------------------------------------
 # HELPER FUNCTIONS
@@ -34,134 +43,128 @@ def list_fits(folder):
     return sorted([os.path.join(folder, f) for f in os.listdir(folder)
                    if f.lower().endswith((".fit", ".fits"))])
 
-def load_fits(path):
-    """Return (data, header) from a FITS file, ensuring numeric data."""
+def load_fits_data(path):
     with fits.open(path, memmap=True) as hdul:
         data = hdul[0].data.astype(float)
         hdr = hdul[0].header
     return np.nan_to_num(data), hdr
 
-def get_exptime(header):
-    """Try multiple exposure time keys, return float value."""
-    for key in EXPTIME_KEYS:
-        if key in header:
-            try:
-                return float(header[key])
-            except Exception:
-                pass
-    raise KeyError(f"Exposure time not found in header keys: {EXPTIME_KEYS}")
+def get_exptime_sec(header):
+    if EXPTIME_KEY in header:
+        return float(header[EXPTIME_KEY]) / 1e5
+    return 1.0  # fallback if key missing
 
-def stack_median_exptime_normalized(fits_list):
-    """Stack all FITS normalized by exposure time (counts/s)."""
-    stack = []
-    for f in fits_list:
-        data, hdr = load_fits(f)
-        exptime = get_exptime(hdr)
-        if exptime <= 0:
-            raise ValueError(f"Invalid exposure time ({exptime}) in {f}")
-        stack.append(data / exptime)
-    if not stack:
-        raise ValueError("No FITS files found in folder.")
-    stack = np.array(stack)
-    med = np.median(stack, axis=0)
-    return med
+def extract_box(data, x, y, half_size):
+    x, y = int(round(x)), int(round(y))
+    y1, y2 = y - half_size, y + half_size + 1
+    x1, x2 = x - half_size, x + half_size + 1
+    y1, y2 = max(y1, 0), min(y2, data.shape[0])
+    x1, x2 = max(x1, 0), min(x2, data.shape[1])
+    return data[y1:y2, x1:x2]
 
-def show_and_click(image, title, nstars=None):
-    interval = ZScaleInterval()
-    vmin, vmax = interval.get_limits(image)
-    norm = ImageNormalize(vmin=vmin, vmax=vmax)
-    fig, ax = plt.subplots(figsize=(9,7))
-    ax.imshow(image, origin='lower', cmap='gray_r', norm=norm)
-    ax.set_title(title + "\nClick on stars (press ENTER when done)")
-    coords = []
+def load_star_coords(npy_path):
+    if not os.path.exists(npy_path):
+        raise FileNotFoundError(f"Missing star coord file: {npy_path}")
+    coords = np.load(npy_path)
+    x_star, y_star = coords[0, 3], coords[0, 2]
+    return float(x_star), float(y_star)
 
-    def onclick(event):
-        if event.inaxes:
-            coords.append((float(event.ydata), float(event.xdata)))
-            ax.plot(event.xdata, event.ydata, 'o', color='lime', markersize=8)
-            fig.canvas.draw()
-
-    def onkey(event):
-        if event.key in ('enter', 'return'):
-            plt.close(fig)
-
-    cid = fig.canvas.mpl_connect('button_press_event', onclick)
-    kid = fig.canvas.mpl_connect('key_press_event', onkey)
+def plot_median_box(image, filter_name, save_dir):
+    plt.figure(figsize=(5, 4))
+    # Use robust scaling to make faint stars visible
+    vmin = np.percentile(image, 5)
+    vmax = np.percentile(image, 99)
+    plt.imshow(image, origin='lower', cmap='inferno', vmin=vmin, vmax=vmax)
+    plt.colorbar(label='Counts/s')
+    plt.title(f"Median box — {filter_name.upper()} filter")
+    plt.xlabel('X pixels')
+    plt.ylabel('Y pixels')
+    plt.tight_layout()
+    if SAVE_FIGS:
+        out_path = os.path.join(save_dir, f"median_box_{filter_name}.png")
+        plt.savefig(out_path, dpi=150)
     plt.show()
 
-    if nstars and len(coords) != nstars:
-        raise ValueError(f"Expected {nstars} stars, got {len(coords)}.")
-
-    return coords
-
-def circ_sum(image, center, r):
-    y0, x0 = center
-    y, x = np.ogrid[:image.shape[0], :image.shape[1]]
-    mask = (x-x0)**2 + (y-y0)**2 <= r**2
-    return float(np.sum(image[mask])), int(np.count_nonzero(mask))
-
-def ann_sum(image, center, r_in, r_out):
-    y0, x0 = center
-    y, x = np.ogrid[:image.shape[0], :image.shape[1]]
-    r2 = (x-x0)**2 + (y-y0)**2
-    mask = (r2 > r_in**2) & (r2 <= r_out**2)
-    return float(np.sum(image[mask])), int(np.count_nonzero(mask))
-
 # ------------------------------------------------------
-# MAIN PIPELINE
+# MAIN
 # ------------------------------------------------------
 def main():
-    print("=== Loading and stacking FITS files (normalized by exposure time) ===")
-    clear_files = list_fits(CLEAR_FOLDER)
-    filt_files  = list_fits(FILTER_FOLDER)
+    flux_results = {}
 
-    print(f"Found {len(clear_files)} clear files, {len(filt_files)} {FILTER_NAME}-filter files.")
-    clear_master = stack_median_exptime_normalized(clear_files)
-    filt_master  = stack_median_exptime_normalized(filt_files)
+    for filt, folder in FILTER_FOLDERS.items():
+        fits_files = list_fits(folder)
+        if not fits_files:
+            print(f"[WARNING] No FITS files found for {filt}")
+            continue
 
-    # Save masters
-    fits.writeto(os.path.join(CLEAR_FOLDER, "master_clear_counts_per_s.fits"), clear_master, overwrite=True)
-    fits.writeto(os.path.join(FILTER_FOLDER, f"master_{FILTER_NAME}_counts_per_s.fits"), filt_master, overwrite=True)
-    print("Master frames saved (fluxes in counts/s).")
+        print(f"\n=== {filt.upper()} FILTER ({len(fits_files)} frames) ===")
+        x_star, y_star = x_star, y_star = load_star_coords(STAR_COORD_FILES[filt])
 
-    # === Select stars ===
-    clear_coords = show_and_click(clear_master, "CLEAR MASTER — select stars")
-    nstars = len(clear_coords)
-    print(f"{nstars} stars selected on CLEAR master.")
+        print(f"Star coords from npy: x={x_star:.2f}, y={y_star:.2f}")
 
-    filt_coords = show_and_click(filt_master, f"{FILTER_NAME.upper()} MASTER — click same {nstars} stars in same order", nstars=nstars)
+        # Quick check: plot the star on the first frame
+        first_data, _ = load_fits_data(fits_files[0])
+        plt.figure(figsize=(5, 5))
+        plt.imshow(first_data, origin='lower', cmap='inferno',
+                   vmin=np.percentile(first_data, 5),
+                   vmax=np.percentile(first_data, 99))
+        plt.plot(x_star, y_star, 'ro', markersize=6)
+        plt.title(f"Star check — {filt.upper()} filter")
+        plt.show()
 
-    # === Photometry per star ===
-    table = []
-    for idx, (pt_clear, pt_filt) in enumerate(zip(clear_coords, filt_coords), start=1):
-        # Clear
-        ap_sum_c, ap_n_c = circ_sum(clear_master, pt_clear, AP_RADIUS_PIX)
-        ann_sum_c, ann_n_c = ann_sum(clear_master, pt_clear, ANN_INNER, ANN_OUTER)
-        bkg_c = ann_sum_c / ann_n_c
-        ap_flux_c = ap_sum_c - bkg_c * ap_n_c
+        boxes = []
+        for f in fits_files:
+            data, hdr = load_fits_data(f)
+            exptime = get_exptime_sec(hdr)
+            box = extract_box(data, x_star, y_star, BOX_HALF_SIZE)
+            boxes.append(box / exptime)
 
-        # Filter
-        ap_sum_f, ap_n_f = circ_sum(filt_master, pt_filt, AP_RADIUS_PIX)
-        ann_sum_f, ann_n_f = ann_sum(filt_master, pt_filt, ANN_INNER, ANN_OUTER)
-        bkg_f = ann_sum_f / ann_n_f
-        ap_flux_f = ap_sum_f - bkg_f * ap_n_f
+        median_box = np.median(np.stack(boxes), axis=0)
+        flux = np.sum(median_box)
+        flux_results[filt] = flux
 
-        ratio = ap_flux_f / ap_flux_c if ap_flux_c != 0 else np.nan
+        # Save median box FITS
+        print(f"flux = {flux:.3e} counts/s")
 
-        table.append({
-            "Star": idx,
-            "Clear_ApFlux_per_s": ap_flux_c,
-            f"{FILTER_NAME}_ApFlux_per_s": ap_flux_f,
-            f"{FILTER_NAME}/Clear": ratio
+        # Plot median box
+        plot_median_box(median_box, filt, folder)
+
+    # Compute η relative to CLEAR
+    if "clear" not in flux_results:
+        raise ValueError("No CLEAR data found — cannot compute η.")
+
+    clear_flux = flux_results["clear"]
+    results = []
+    for filt, flux in flux_results.items():
+        if filt == "clear":
+            continue
+        eta = flux / clear_flux
+        results.append({
+            "Filter": filt,
+            "Flux_filter": flux,
+            "Flux_clear": clear_flux,
+            "Eta": eta
         })
+        print(f"η({filt}) = {eta:.4f}")
 
-    df = pd.DataFrame(table)
-    print("\n=== Photometry Ratios (normalized by exposure time) ===")
-    print(df.to_string(index=False))
-
-    out_csv = os.path.join(FILTER_FOLDER, f"photometry_ratio_{FILTER_NAME}_norm.csv")
+    # Save to CSV
+    df = pd.DataFrame(results)
+    out_csv = os.path.join(OUTPUT_FOLDER, f"eta_results_{STAR_NAME}.csv")
     df.to_csv(out_csv, index=False)
-    print(f"\nSaved results to: {out_csv}")
+    print(f"\nSaved results → {out_csv}")
+    print(df)
+
+    # Plot η bar chart
+    plt.figure(figsize=(6, 4))
+    plt.bar(df["Filter"], df["Eta"], color=['limegreen', 'gold', 'tomato'])
+    plt.ylabel("η = Flux(filter) / Flux(clear)")
+    plt.title(f"Transmission Efficiency (η) — Star {STAR_NAME}")
+    for i, val in enumerate(df["Eta"]):
+        plt.text(i, val + 0.01, f"{val:.3f}", ha='center', va='bottom', fontsize=9)
+    plt.tight_layout()
+    if SAVE_FIGS:
+        plt.savefig(os.path.join(OUTPUT_FOLDER, f"eta_barplot_{STAR_NAME}.png"), dpi=150)
+    plt.show()
 
 # ------------------------------------------------------
 if __name__ == "__main__":
