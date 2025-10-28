@@ -5,8 +5,8 @@ from astropy.io import fits
 from scipy.optimize import curve_fit
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\i\high\keep"
-COORDS_PATH = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-i-94B2.npy"
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target2\i\high\keep\reduced"
+COORDS_PATH = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\i\area 92\oct1-i-area92-star11.npy"
 PSF_ARCSEC = 1
 PIXEL_SCALE = 0.047 * 1.8
 BOX_FACTOR = 10.0

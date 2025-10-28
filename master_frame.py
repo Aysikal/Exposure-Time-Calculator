@@ -11,15 +11,15 @@ import reza
 from scipy.ndimage import median_filter, generic_filter
 
 # --- Hardcoded Mode Tag ---
-MODE_TAG = "LOW"
+MODE_TAG = "HIGH"
 
 # --- Regex for extracting color token from flat filenames ---
 COLOR_PATTERN = re.compile(r'_(u|g|r|i|clear)_', re.IGNORECASE)
 
 # --- Paths ---
 SPREADSHEET_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\spreadsheets"
-MASTER_OUTPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\Oct 1 masterdarks\LOW"
-PLOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\plots\low darks"
+MASTER_OUTPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\Best Flats\1x1"
+PLOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\plots\new flats"
 # --- Utilities ---
 def open_folder_dialog(title="Select Folder"):
     root = Tk()
@@ -174,7 +174,7 @@ def create_master_frame(folder_path, output_path, frame_type="dark"):
 
     if frame_type.lower() == 'flat':
         print("Applying median filter to suppress stars...")
-        master = median_filter(master, size=50, mode="reflect")
+        master = median_filter(master, size=80, mode="reflect")
 
     # sigma clip
     clipped = sigma_clip(master, sigma=4, cenfunc='median')

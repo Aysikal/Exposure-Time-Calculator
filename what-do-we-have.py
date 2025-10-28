@@ -27,9 +27,9 @@ from dateutil import parser as dtparse
 from dateutil import tz
 
 # === CONFIG ===
-ROOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025"
-OUT_CSV = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\Rezaei_Altafi_oct_7_2025_inventory.csv"
-OUT_SUMMARY = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\RRezaei_Altafi_oct_7_2025_summary.txt"
+ROOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22"
+OUT_CSV = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\rezaei_saba_farideH_2025_10_22_inventory.csv"
+OUT_SUMMARY = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\rezaei_saba_farideH_2025_10_22_summary.txt"
 LOCAL_TZ = tz.gettz("Asia/Tehran")
 # filename pattern: object_filter_..._YYYY_MM_DD...
 FNAME_DATE_RE = re.compile(r"(?P<object>[^_]+)_(?P<filter>[A-Za-z0-9]+)_[^_]*_(?P<date>\d{4}_\d{2}_\d{2})")

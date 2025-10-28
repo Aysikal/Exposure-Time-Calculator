@@ -35,8 +35,8 @@ SITE_OBSERVER  = Observer(location=SITE_LOCATION,
 # -----------------------------------------------------------------------------
 # Optional custom time range for plotting (local time)
 # -----------------------------------------------------------------------------
-LOCAL_START_TIME = "2025-10-01 20:45"  # format: YYYY-MM-DD HH:MM
-LOCAL_END_TIME   = "2025-10-02 00:17"
+LOCAL_START_TIME = "2025-10-28 18:00"  # format: YYYY-MM-DD HH:MM
+LOCAL_END_TIME   = "2025-10-29 04:00"
 LOCAL_TIMEZONE   = "Asia/Tehran"
 
 # -----------------------------------------------------------------------------
@@ -148,7 +148,7 @@ def airmass_function(
 # Example usage
 # -----------------------------------------------------------------------------
 X_local = airmass_function(
-    date_str="2025-10-01",
+    date_str="2025-10-28",
     hour=21,
     minute=0,
     RA="00:54:52",

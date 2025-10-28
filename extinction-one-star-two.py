@@ -25,8 +25,8 @@ SITE_TZ_NAME = "Asia/Tehran"
 PLOT_SAVEFIG = True
 
 # ---------------- AIR MASS FILTER ----------------
-AIRMASS_MIN = 1
-AIRMASS_MAX = 2.5
+AIRMASS_MIN = 1.2
+AIRMASS_MAX = 2.15
 
 pixels_per_arcsec = PIXEL_SCALE
 box_size_px = round((BOX_FACTOR * PSF_ARCSEC) / pixels_per_arcsec)
@@ -230,7 +230,7 @@ for sid, npy_name in enumerate(npy_files, start=1):
             ax.set_title(f"{npy_name}: Extinction Fit")
             ax.legend()
             ax.grid(True)
-            #plt.show()
+            plt.show()
 
             print(f"Extinction fit: {npy_name}  K={K:.4f}, m0={m0:.4f}")
 

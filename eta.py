@@ -14,14 +14,14 @@ FILTER_FOLDERS = {
     "i":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Altafi_10_07_2025\standard_star\94 B2\i\high\keep\reduced"
 }
 STAR_COORD_FILES = {
-    "clear": r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-clear-94B2.npy",
-    "g":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-g-94B2.npy",
-    "r":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-r-94B2.npy",
-    "i":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2\oct7-i-94B2.npy"
+    "clear": r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\clear\oct1-clear-area95-star1.npy",
+    "g":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\g\oct1-g-area95-star1.npy",
+    "r":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\r\oct1-r-area95-star1.npy",
+    "i":     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\i\oct1-i-area95-star1.npy"
 }
 
-STAR_NAME = "94B2"
-OUTPUT_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\standard_star\94 B2"
+STAR_NAME = "Area 95 star 1"
+OUTPUT_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\area95-eta"
 
 
 # Updated: dynamically match the box size used in .npy creation

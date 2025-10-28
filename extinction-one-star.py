@@ -11,8 +11,8 @@ from ancillary_functions import airmass_function
 import matplotlib.patches as patches
 
 # ---------------- CONFIG ----------------
-ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target2\i\high\keep\reduced"
-COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\i\area 92"
+ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Oct01\oct01_2025\target2\g\high\keep\reduced"
+COORDS_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\extiction\oct 1\g\area 92"
 OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables_high")
 os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
 
