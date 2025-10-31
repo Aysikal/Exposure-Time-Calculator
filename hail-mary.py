@@ -5,7 +5,7 @@ import astroalign as aa
 from glob import glob
 
 # 📁 Input and output directories
-input_dir = r"C:\Users\AYSAN\Desktop\stack all"
+input_dir = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_21\ngc604\r\high"
 output_dir = os.path.join(input_dir, "aligned")
 os.makedirs(output_dir, exist_ok=True)
 
@@ -37,6 +37,6 @@ for path in fits_files[1:]:
 
 # 📊 Stack aligned images (mean)
 stacked = np.mean(aligned_images, axis=0)
-stacked_path = os.path.join(output_dir, "stacked_image_gri.fits")
+stacked_path = os.path.join(output_dir, "NGC604_r.fits")
 fits.writeto(stacked_path, stacked.astype(np.float32), overwrite=True)
 print(f"Stacked image saved to: {stacked_path}")
