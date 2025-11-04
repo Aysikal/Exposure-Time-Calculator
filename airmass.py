@@ -148,12 +148,12 @@ def airmass_function(
 # Example usage
 # -----------------------------------------------------------------------------
 X_local = airmass_function(
-    date_str="2025-10-21",
+    date_str="2025-11-4",
     hour=21,
     minute=0,
-    RA = "01:34:32.5"
-    DEC = "+30:47:06"
-    name="NGC 604",
+    RA = "05:58:25.03527239713",
+    DEC = "+00:05:13.5798366821",
+    name="test star",
     input_timezone="Asia/Tehran",
     plot_night_curve=True
 )

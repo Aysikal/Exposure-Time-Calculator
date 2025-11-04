@@ -5,7 +5,7 @@ import astroalign as aa
 from glob import glob
 
 # 📁 Input and output directories
-input_dir = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_21\ngc604\r\high"
+input_dir = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\GRB251013c\high\hot pixels removed"
 output_dir = os.path.join(input_dir, "aligned")
 os.makedirs(output_dir, exist_ok=True)
 
@@ -24,7 +24,8 @@ for path in fits_files[1:]:
         data = fits.getdata(path)
         data = np.ascontiguousarray(data.byteswap().newbyteorder())  # Convert to native byte order
 
-        aligned, _ = aa.register(data, ref_data)
+        aligned, _ = aa.register(data, ref_data, max_control_points=50, detection_sigma=3)
+
         aligned_images.append(aligned)
 
         # Save aligned image
@@ -36,7 +37,10 @@ for path in fits_files[1:]:
         print(f"Failed to align {path}: {e}")
 
 # 📊 Stack aligned images (mean)
-stacked = np.mean(aligned_images, axis=0)
-stacked_path = os.path.join(output_dir, "NGC604_r.fits")
+stacked = np.median(aligned_images, axis=0)
+sum = np.sum(aligned_images, axis=0)
+stacked_path = os.path.join(output_dir, "GRB_i_median.fits")
+sum_path = os.path.join(output_dir, "GRB_i_sum.fits")
 fits.writeto(stacked_path, stacked.astype(np.float32), overwrite=True)
+fits.writeto(sum_path, sum.astype(np.float32), overwrite=True)
 print(f"Stacked image saved to: {stacked_path}")

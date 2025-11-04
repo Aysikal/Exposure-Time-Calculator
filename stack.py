@@ -56,26 +56,25 @@ def get_exptime(header):
     raise KeyError(f"Exposure time not found in header keys: {EXPTIME_KEYS}")
 
 
-def stack_median(fits_list, load_fits, get_exptime=None, skip_bad=True):
+def stack_images(fits_list, load_fits, get_exptime=None, method="median", skip_bad=True):
     """
-    Median-stack FITS images without normalizing by exposure time.
+    Stack FITS images using specified method: 'median' or 'sum'.
     - fits_list: iterable of file paths
     - load_fits: callable(path) -> (data, header)
     - get_exptime: optional callable(header) -> float (used only for validation if provided)
+    - method: 'median' (default) or 'sum'
     - skip_bad: skip files that fail to load or fail validation; collect them in bad_files
-    Returns: (median_image, bad_files) where bad_files is a list of (path, error_str)
+    Returns: (stacked_image, bad_files)
     """
     stack = []
     bad_files = []
     for f in fits_list:
         try:
             data, hdr = load_fits(f)
-            # optional validation of exposure time (keeps original behaviour if desired)
             if get_exptime is not None:
                 exptime = get_exptime(hdr)
                 if exptime <= 0 or not np.isfinite(exptime):
                     raise ValueError(f"Invalid EXPTIME ({exptime})")
-            # keep NaNs so np.nanmedian can handle pixels missing in some frames
             stack.append(np.asarray(data, dtype=float))
         except Exception as e:
             msg = f"Skipping {os.path.basename(f)}: {e}"
@@ -85,11 +84,20 @@ def stack_median(fits_list, load_fits, get_exptime=None, skip_bad=True):
                 continue
             else:
                 raise
+
     if not stack:
         raise ValueError("No valid FITS images to stack after filtering.")
-    arr = np.stack(stack, axis=0)           # shape (N, ny, nx)
-    med = np.nanmedian(arr, axis=0)        # median along the stack axis
-    return med, bad_files
+
+    arr = np.stack(stack, axis=0)  # shape (N, ny, nx)
+
+    if method == "median":
+        result = np.nanmedian(arr, axis=0)
+    elif method == "sum":
+        result = np.nansum(arr, axis=0)
+    else:
+        raise ValueError(f"Unknown stacking method: {method}")
+
+    return result, bad_files
 
 
 def plot_image(image, title="Stacked (counts/s)", cmap="gray_r", figsize=(8,6), savepath=None):
@@ -109,14 +117,14 @@ def plot_image(image, title="Stacked (counts/s)", cmap="gray_r", figsize=(8,6), 
     plt.show()
 
 if __name__ == "__main__":
-    FOLDER = r"C:\Users\AYSAN\Desktop\Crab\g\high\reduced"
+    FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\GRB251013c\high\hot pixels removed\aligned\reduced"
     fits_list = list_fits(FOLDER)
     print(f"Found {len(fits_list)} FITS files.")
     # pass load_fits and optionally get_exptime into stack_median
-    stacked, bad = stack_median(fits_list, load_fits, get_exptime=None, skip_bad=True)
+    stacked, bad = stack_images(fits_list, load_fits,get_exptime=None, method="sum", skip_bad=True)
     print(f"Stack shape: {stacked.shape}; skipped {len(bad)} files.")
     out_png = os.path.join(FOLDER, "stacked_median.png")
     plot_image(stacked, title=f"Median stack of {len(fits_list)-len(bad)} files", savepath=out_png)
-    out_fits = os.path.join(FOLDER, "reduced_crab_g_master_with_stars.fits")
+    out_fits = os.path.join(FOLDER, "stacked-median-RGB.fits")
     fits.writeto(out_fits, stacked, overwrite=True)
     print("Wrote:", out_fits)

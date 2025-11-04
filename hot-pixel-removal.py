@@ -1,4 +1,3 @@
-# cycle_spinning_table_original_firstcol_postcount_fixed.py
 import numpy as np
 import pywt
 from astropy.io import fits
@@ -14,28 +13,36 @@ num_iterations = 3
 wavelet = 'db2'
 dwt_level = 1
 shifts = [(0, 0), (1, 0), (0, 1), (1, 1)]
-fits_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\ngc869\r\high\keep\ngc891_r_2025_10_22_1x1_exp00.02.00.000_000001_High_1.fit"
+fits_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\GRB251013c\high\grb_i_2025_10_22_1x1_exp00.01.00.000_000001_High_2.fit"
 box_center = (1200, 1200)
 star_center = (858, 2154)
 box_size = 100
 save_cleaned_fits = True
-out_prefix = "ngc891_cycleclean"
+show_3d_plots = False  # Toggle for 3D surface plots
+out_prefix = "GRB_cycleclean"
 diagnostics_csv = f"{out_prefix}_diagnostics.csv"
-stats_summary_txt = f"{out_prefix}_summary.txt"
 
 # Hot-pixel detection / inpaint params
 median_size = 5
 hot_sigma = 6.0
 protect_above = None
 
-# === HELPERS ===
 def extract_box(img, center, size):
     x, y = center
     half = size // 2
-    return img[y-half:y+half, x-half:x+half].copy()
+    y_min = max(0, y - half)
+    y_max = min(img.shape[0], y + half)
+    x_min = max(0, x - half)
+    x_max = min(img.shape[1], x + half)
+    box = img[y_min:y_max, x_min:x_max].copy()
+    if box.shape[0] == 0 or box.shape[1] == 0:
+        return np.empty((0, 0), dtype=img.dtype)
+    return box
 
 def stats(arr):
     arr_flat = arr[np.isfinite(arr)].ravel()
+    if arr_flat.size == 0:
+        return {k: np.nan for k in ['mean', 'median', 'std', 'rms', 'min', 'max']}
     return {
         'mean': float(np.nanmean(arr_flat)),
         'median': float(np.nanmedian(arr_flat)),
@@ -87,23 +94,13 @@ hdul.close()
 if data.ndim != 2:
     raise ValueError("Expected a 2D image in primary HDU")
 
-# compute original mask/stats
-orig_mask, orig_med = detect_hot_mask(data, median_size=median_size, hot_sigma=hot_sigma, protect_above=protect_above)
-orig_hot_count = int(np.count_nonzero(orig_mask))
 orig_stats = stats(data)
-orig_box = extract_box(data, box_center, box_size)
-orig_box_stats = stats(orig_box)
-orig_star_box = extract_box(data, star_center, box_size)
-orig_star_stats = stats(orig_star_box)
-
-# Prepare containers
 current_image = data.copy()
 iteration_stats = []
-images_per_iter = [data.copy()]  # snapshots for plotting
+images_per_iter = [data.copy()]
 
-# === ITERATIONS ===
 for i in range(1, num_iterations + 1):
-    mask_hot_start, med = detect_hot_mask(current_image, median_size=median_size, hot_sigma=hot_sigma, protect_above=protect_above)
+    mask_hot_start, med = detect_hot_mask(current_image, median_size, hot_sigma, protect_above)
     num_detected_start = int(np.count_nonzero(mask_hot_start))
     num_replaced = 0
 
@@ -111,20 +108,17 @@ for i in range(1, num_iterations + 1):
         inpainted = current_image.copy()
         inpainted[mask_hot_start] = med[mask_hot_start]
         cleaned_full = cycle_spin_clean(inpainted, wavelet, dwt_level, shifts)
-        cleaned_full = cleaned_full[:data.shape[0], :data.shape[1]]
         changed_mask = mask_hot_start & (cleaned_full != current_image)
         num_replaced = int(np.count_nonzero(changed_mask))
         current_image[mask_hot_start] = cleaned_full[mask_hot_start]
     else:
         cleaned_full = cycle_spin_clean(current_image, wavelet, dwt_level, shifts)
-        cleaned_full = cleaned_full[:data.shape[0], :data.shape[1]]
         changed_mask = (cleaned_full != current_image)
         num_replaced = int(np.count_nonzero(changed_mask))
         current_image[:] = cleaned_full
 
-    current_image = np.clip(current_image, np.min(data), np.max(data))
-
-    post_mask, post_med = detect_hot_mask(current_image, median_size=median_size, hot_sigma=hot_sigma, protect_above=protect_above)
+    current_image = np.clip(current_image, np.nanmin(data), np.nanmax(data))
+    post_mask, _ = detect_hot_mask(current_image, median_size, hot_sigma, protect_above)
     num_detected_post = int(np.count_nonzero(post_mask))
 
     images_per_iter.append(current_image.copy())
@@ -153,60 +147,55 @@ for i in range(1, num_iterations + 1):
 
 # Save cleaned FITS
 if save_cleaned_fits:
-    cleaned_hdu = fits.PrimaryHDU(current_image, header=hdr)
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     out_fits = f"{out_prefix}_iter{num_iterations}_{timestamp}.fit"
-    cleaned_hdu.writeto(out_fits, overwrite=True)
+    fits.PrimaryHDU(current_image, header=hdr).writeto(out_fits, overwrite=True)
 
-# Write iteration stats CSV
-fieldnames = ['label','hot_pixels_after','hot_pixels_start','hot_pixels_replaced',
-              'mean_whole','std_whole','rms_whole','mean_box','std_box','rms_box',
-              'mean_star','std_star','rms_star','percent_rms_reduction']
+# Save diagnostics CSV
+fieldnames = list(iteration_stats[0].keys())
 with open(diagnostics_csv, 'w', newline='') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
     for row in iteration_stats:
         writer.writerow(row)
 
-# === 3D SURFACES: background and star region ===
-X, Y = np.meshgrid(np.arange(box_size), np.arange(box_size))
-vmin = np.percentile(data, 1)
-vmax = np.nanmax(data)
+# === Optional 3D SURFACES ===
+if show_3d_plots:
+    X, Y = np.meshgrid(np.arange(box_size), np.arange(box_size))
+    vmin = np.percentile(data, 1)
+    vmax = np.nanmax(data)
 
-# Background boxes per iteration
-boxes_bg = [extract_box(img, box_center, box_size) for img in images_per_iter]
-# Star boxes per iteration
-boxes_star = [extract_box(img, star_center, box_size) for img in images_per_iter]
+    boxes_bg = [extract_box(img, box_center, box_size) for img in images_per_iter]
+    boxes_star = [extract_box(img, star_center, box_size) for img in images_per_iter]
 
-# Plot BG
-fig_bg = plt.figure(figsize=(4*(num_iterations+1), 4))
-for i, box in enumerate(boxes_bg):
-    ax = fig_bg.add_subplot(1, num_iterations+1, 1+i, projection='3d')
-    surf = ax.plot_surface(X, Y, box, cmap='viridis', edgecolor='none',
-                           vmin=vmin, vmax=vmax, rcount=box_size, ccount=box_size)
-    ax.set_title(f"BG Iter {i}")
-    ax.set_xticks([]); ax.set_yticks([])
-    ax.set_zlim(vmin, vmax)
-    fig_bg.colorbar(surf, ax=ax, shrink=0.6, pad=0.05, label='DN')
-plt.tight_layout()
-plt.savefig(f"{out_prefix}_3d_bg.png", dpi=150)
-plt.show()
-
-fig_star = plt.figure(figsize=(4*(num_iterations+1), 6))
-for i, box in enumerate(boxes_star):
-    ax = fig_star.add_subplot(1, num_iterations+1, 1+i, projection='3d')
-    surf = ax.plot_surface(X, Y, box, cmap='viridis', edgecolor='none',
-                           vmin=vmin, vmax=vmax, rcount=box_size, ccount=box_size)
-    ax.set_title(f"Star Iter {i}")
-    ax.set_xticks([]); ax.set_yticks([])
-    ax.set_zlim(vmin, vmax)
-    ax.view_init(elev=30, azim=-60)  # adjust as needed
-    fig_star.colorbar(surf, ax=ax, shrink=0.6, pad=0.05, label='DN')
-
-plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1, wspace=0.3)
-plt.savefig(f"{out_prefix}_3d_star.png", dpi=150)
-plt.show()
-
+    fig_bg = plt.figure(figsize=(4*(num_iterations+1), 4))
+    for i, box in enumerate(boxes_bg):
+        if box.shape != (box_size, box_size):
+            continue
+        ax = fig_bg.add_subplot(1, num_iterations+1, 1+i, projection='3d')
+        surf = ax.plot_surface(X, Y, box, cmap='viridis', edgecolor='none',
+                               vmin=vmin, vmax=vmax, rcount=box_size, ccount=box_size)
+        ax.set_title(f"BG Iter {i}")
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_zlim(vmin, vmax)
+        fig_bg.colorbar(surf, ax=ax, shrink=0.6, pad=0.05, label='DN')
+    plt.tight()
+        # Star plots
+    fig_star = plt.figure(figsize=(4*(num_iterations+1), 6))
+    for i, box in enumerate(boxes_star):
+        if box.shape != (box_size, box_size):
+            continue
+        ax = fig_star.add_subplot(1, num_iterations+1, 1+i, projection='3d')
+        surf = ax.plot_surface(X, Y, box, cmap='viridis', edgecolor='none',
+                               vmin=vmin, vmax=vmax, rcount=box_size, ccount=box_size)
+        ax.set_title(f"Star Iter {i}")
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_zlim(vmin, vmax)
+        ax.view_init(elev=30, azim=-60)
+        fig_star.colorbar(surf, ax=ax, shrink=0.6, pad=0.05, label='DN')
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.1, wspace=0.3)
+    plt.savefig(f"{out_prefix}_3d_star.png", dpi=150)
+    plt.show()
 
 # Show side-by-side original vs final (ZScale)
 orig = data.astype(np.float32)
@@ -231,5 +220,6 @@ plt.savefig(png_out, dpi=200)
 plt.show()
 
 print(f"Saved comparison image to: {os.path.abspath(png_out)}")
-print(f"Saved cleaned FITS to: {os.path.abspath(out_fits)}")
+if save_cleaned_fits:
+    print(f"Saved cleaned FITS to: {os.path.abspath(out_fits)}")
 print(f"Saved diagnostics CSV to: {os.path.abspath(diagnostics_csv)}")
