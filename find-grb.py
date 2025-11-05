@@ -14,7 +14,7 @@ targets = {
 }
 cutout_half = 100
 REFINE_BOX = 25
-MAG_ZERO_OFFSET = 15.0
+
 
 # Known reference magnitude (if you still want calibration later)
 ref_known_mag = 20.06
@@ -248,7 +248,7 @@ for name, (x_ref, y_ref) in targets.items():
     mean_ann = float(np.nanmedian(ann_vals)) if ann_vals.size>0 else float(np.nanmedian(disp))
     net = sum_circle - n_pix * mean_ann
     net_per_sec = net / exptime_s if (exptime_s and exptime_s>0) else np.nan
-    m_instr = -2.5 * np.log10(net_per_sec) + MAG_ZERO_OFFSET if (net_per_sec>0 and np.isfinite(net_per_sec)) else np.nan
+    m_instr = -2.5 * np.log10(net_per_sec)  if (net_per_sec>0 and np.isfinite(net_per_sec)) else np.nan
 
     results[name] = {
         "x_star": x_star, "y_star": y_star, "HWHM": HWHM_used,

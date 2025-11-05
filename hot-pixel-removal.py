@@ -13,7 +13,7 @@ num_iterations = 3
 wavelet = 'db2'
 dwt_level = 1
 shifts = [(0, 0), (1, 0), (0, 1), (1, 1)]
-fits_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\GRB251013c\high\grb_i_2025_10_22_1x1_exp00.01.00.000_000001_High_2.fit"
+fits_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\data 2\Rezaei_Shakeri_Hashemi_etal_10_08_2025\flat_Hossein\r\high"
 box_center = (1200, 1200)
 star_center = (858, 2154)
 box_size = 100
@@ -85,7 +85,6 @@ def cycle_spin_clean(image, wavelet, level, shifts):
     cleaned = (accum / len(shifts)).astype(np.float32)
     return cleaned
 
-# === LOAD IMAGE ===
 hdul = fits.open(fits_path)
 data = hdul[0].data.astype(np.float32)
 hdr = hdul[0].header

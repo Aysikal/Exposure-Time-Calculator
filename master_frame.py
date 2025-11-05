@@ -18,8 +18,8 @@ COLOR_PATTERN = re.compile(r'_(u|g|r|i|clear)_', re.IGNORECASE)
 
 # --- Paths ---
 SPREADSHEET_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\spreadsheets"
-MASTER_OUTPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\Oct 21 and 22 masterdarks\1x1\HIGH"
-PLOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\plots\high dark"
+MASTER_OUTPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\no hot pixels masterflats"
+PLOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\no hot pixels masterflats"
 # --- Utilities ---
 def open_folder_dialog(title="Select Folder"):
     root = Tk()
