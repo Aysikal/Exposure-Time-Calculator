@@ -148,7 +148,7 @@ def airmass_function(
 # Example usage
 # -----------------------------------------------------------------------------
 X_local = airmass_function(
-    date_str="2025-11-4",
+    date_str="2025-10-22",
     hour=21,
     minute=0,
     RA = "05:58:25.03527239713",

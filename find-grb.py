@@ -7,7 +7,7 @@ from astropy.nddata import Cutout2D
 from astropy.visualization import ZScaleInterval, ImageNormalize
 
 # === User config ===
-fits_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\GRB251013c\high\hot pixels removed\aligned\stacked\stacked-sumRGB.fits"
+fits_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\GRB251013c\high\hot pixels removed\aligned\reduced\stacked_sum.fits"
 targets = {
     "GRB_251013C": (2090.9, 1497.5),
     "Ref_star": (2372.0, 2110.0)
@@ -174,20 +174,12 @@ for key in ("EXPTIME", "EXPOSURE", "TOTAL_EXP", "NETEXPT"):
         except Exception:
             pass
 if exptime_s is None:
-    exptime_s = 2.0 * 3600.0
+    exptime_s = 6739
 print(f"Using total exposure time (s) = {exptime_s}")
 
 # instrument params
-gain = hdr.get("GAIN", hdr.get("EGAIN", DEFAULT_GAIN))
-readnoise = hdr.get("RDNOISE", hdr.get("READNOIS", hdr.get("READNOISE", DEFAULT_READNOISE)))
-try:
-    gain = float(gain)
-except Exception:
-    gain = DEFAULT_GAIN
-try:
-    readnoise = float(readnoise)
-except Exception:
-    readnoise = DEFAULT_READNOISE
+gain = 1/16.5
+readnoise = 3.7
 print(f"Using gain={gain} e-/ADU, readnoise={readnoise} e-")
 print(f"Pixel scale = {pixel_scale_arcsec:.6f} arcsec/px -> min FWHM enforced = {min_fwhm_pixels:.2f} px (={min_fwhm_arcsec} arcsec)")
 
