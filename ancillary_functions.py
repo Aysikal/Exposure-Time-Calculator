@@ -7,7 +7,7 @@
 
 from astropy.utils import iers
 iers.conf.auto_max_age = None
-
+import math
 import warnings
 warnings.filterwarnings(
     "ignore",
@@ -119,110 +119,77 @@ def visibility_plot(
 
 
 # Airmass Function ─────────────────────────────────────────────────────
-def airmass_function(
-    date_str,
-    hour,
-    minute,
-    RA,
-    DEC,
-    plot_night_curve=False,
-    n_steps=200
-):
+from astropy.coordinates import SkyCoord, EarthLocation, AltAz
+from astropy.time import Time
+from zoneinfo import ZoneInfo
+import numpy as np
+from datetime import datetime
+from typing import Union
+
+# Site configuration
+SITE_NAME      = "INO"
+SITE_LAT, SITE_LON, SITE_ELEV = 35.674, 51.3188, 3600
+SITE_LOCATION  = EarthLocation(lat=SITE_LAT, lon=SITE_LON, height=SITE_ELEV)
+
+def compute_airmass(
+    date_str: str,
+    hour: int,
+    minute: int,
+    RA: str,
+    DEC: str,
+    input_timezone: str = "Asia/Tehran"
+) -> float:
     """
-    Compute single‐time airmass and optionally overplot full‐night
-    altitude-colored‐by-airmass at the SITE.
-    
+    Compute the airmass of a target at a given date/time and location.
+
     Parameters
     ----------
     date_str : str
-      "YYYY-MM-DD" (UTC)
-    hour, minute : int
-      UTC time for the single airmass calculation.
-    RA, DEC : str
-      "HH:MM:SS", "+DD:MM:SS"
-    plot_night_curve : bool
-      True = draw altitude vs time colored by airmass (1–3).
-    n_steps : int
-      Time resolution for the full‐night plot.
+        Date in 'YYYY-MM-DD' format.
+    hour : int
+        Hour of observation in input_timezone.
+    minute : int
+        Minute of observation in input_timezone.
+    RA : str
+        Right Ascension in 'HH:MM:SS' format.
+    DEC : str
+        Declination in '+DD:MM:SS' or '-DD:MM:SS' format.
+    input_timezone : str, optional
+        Timezone of the input time (default is 'UTC').
+
+    Returns
+    -------
+    float
+        Airmass at the specified date/time.
     """
-    # Parse RA/Dec → decimal degrees
+
+    # Convert input time to UTC
+    tz_in = ZoneInfo(input_timezone)
+    dt_local = datetime.strptime(f"{date_str} {hour:02d}:{minute:02d}", "%Y-%m-%d %H:%M")
+    dt_local = dt_local.replace(tzinfo=tz_in)
+    dt_utc = dt_local.astimezone(ZoneInfo("UTC"))
+    obs_time = Time(dt_utc)
+
+    # Parse RA/DEC to decimal degrees
     ra_h, ra_m, ra_s = map(float, RA.split(":"))
-    ra_deg = ra_h * 15 + ra_m * 0.25 + ra_s * (0.25/60)
+    ra_deg = ra_h*15 + ra_m*0.25 + ra_s*(0.25/60)
+
     d, m, s = map(float, DEC.split(":"))
-    sign = 1 if d >= 0 else -1
-    dec_deg = sign * (abs(d) + m/60 + s/3600)
+    dec_sign = 1 if d >= 0 else -1
+    dec_deg = dec_sign*(abs(d) + m/60 + s/3600)
 
-    # Single‐time airmass
-    coord = SkyCoord(ra=ra_deg*u.deg, dec=dec_deg*u.deg, frame="icrs")
-    ts = f"{date_str} {hour:02d}:{minute:02d}:00"
-    t0 = Time(ts, scale="utc")
-    alt0 = coord.transform_to(
-        AltAz(obstime=t0, location=SITE_LOCATION)
-    ).alt.degree
+    # Compute altitude
+    coord = SkyCoord(ra=ra_deg, dec=dec_deg, frame="icrs", unit='deg')
+    alt = coord.transform_to(AltAz(obstime=obs_time, location=SITE_LOCATION)).alt.degree
 
-    print(alt0)
-    z0 = np.radians(90 - alt0)
-    X0 = 1.0 / (
-        np.cos(z0)
-        + 0.50572 * (6.07995 + np.degrees(z0)) ** (-1.6364)
-    )
-    #print(f"Airmass at {ts} UTC: {X0:.3f}")
+    # Compute airmass (Kasten & Young 1989)
+    z = np.radians(90 - alt)
+    airmass = 1.0 / (np.cos(z) + 0.50572*(6.07995 + np.degrees(z))**(-1.6364))
 
-    # Optional full‐night airmass plot
-    if plot_night_curve:
-        # reuse visibility_plot's time grid logic
-        mid_day = Time(f"{date_str} 12:00:00", scale="utc")
-        sunset  = SITE_OBSERVER.sun_set_time(mid_day, which="nearest")
-        sunrise = SITE_OBSERVER.sun_rise_time(mid_day, which="next")
-        total_hr = (sunrise - sunset).to(u.hour).value
-        times = sunset + np.linspace(0, total_hr, n_steps) * u.hour
+    return airmass
 
-        # altitude & airmass arrays
-        altaz = coord.transform_to(
-            AltAz(obstime=times, location=SITE_LOCATION)
-        )
-        alts = altaz.alt.degree
-        zs   = 90 - alts
-        zr   = np.radians(zs)
-        Xs   = 1.0 / (
-            np.cos(zr)
-            + 0.50572 * (6.07995 + zs) ** (-1.6364)
-        )
+#airmass = compute_airmass(date_str="2025-10-22", hour=21, minute=0,RA="05:58:25",DEC="+00:05:13",input_timezone="Asia/Tehran"  )# local time
 
-        # cap and normalize to [1,3]
-        norm = plt.Normalize(vmin=1, vmax=3)
-
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot_date(times.plot_date, alts, "-k", label="Altitude")
-        sc = ax.scatter(
-            times.plot_date,
-            alts,
-            c=Xs,
-            cmap="coolwarm",  # blue=low, red=high
-            norm=norm,
-            s=25,
-            alpha=0.8
-        )
-
-        ax.axhline(30, color="gray", ls="--", label="30° Elevation")
-        ax.xaxis.set_major_formatter(
-            mdates.DateFormatter("%H:%M", tz=SITE_TIMEZONE)
-        )
-        ax.set_xlabel("Time (" + SITE_TIMEZONE + ")")
-        ax.set_ylabel("Altitude (°)")
-        ax.set_ylim(0, 90)
-        ax.grid(True)
-
-        cbar = plt.colorbar(sc, ax=ax, pad=0.02, extend="max")
-        cbar.set_label("Airmass (clamped at 3)")
-
-        ax.legend(loc="lower right")
-        plt.title(f"{RA} {DEC} — Altitude & Airmass on {date_str} (UTC)")
-        plt.tight_layout()
-        plt.show()
-
-    return X0
-#airmass_function("2025-10-01", 20, 0,"18:36:56.3", "+38:47:01", True ) #vega
 
 def get_fli(date_str: str, hour: int, minute: int) -> float:
     """
@@ -350,3 +317,13 @@ stars = {
 }
 #overlay_visibility_with_moon(stars, date="2025-10-01", moon_alt_limit=25*u.deg, overlay=True)
 
+def calculate_sky_magnitude(offset , fli):
+    # FLI ranges from 0 to 1 (0 = New Moon, 1 = Full Moon)
+    # Assume a constant offset for sky brightness (adjust as needed)
+    offset = 21.0  # Example value (mag/arcsec^2)
+    if fli ==0: 
+          sky_magnitude = offset
+    # Calculate sky brightness (in magnitudes per square arcsecond)
+    else: sky_magnitude = offset + 2.5 * math.log10(1-fli)
+
+    return sky_magnitude
