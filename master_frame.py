@@ -8,18 +8,21 @@ from astropy.io import fits
 from astropy.stats import sigma_clip
 from tkinter import Tk, filedialog, Button, Label
 import reza
-from scipy.ndimage import median_filter, generic_filter
+from scipy.ndimage import median_filter
+from concurrent.futures import ProcessPoolExecutor
 
 # --- Hardcoded Mode Tag ---
 MODE_TAG = "High"
 
-# --- Regex for extracting color token from flat filenames ---
+# --- Regex for extracting color token ---
 COLOR_PATTERN = re.compile(r'_(u|g|r|i|clear)_', re.IGNORECASE)
 
 # --- Paths ---
 SPREADSHEET_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\spreadsheets"
-MASTER_OUTPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\no hot pixels masterflats"
-PLOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\no hot pixels masterflats"
+MASTER_OUTPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\masterframes\Nov 5  masterdarks"
+PLOT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\plots\high darks"
+
+
 # --- Utilities ---
 def open_folder_dialog(title="Select Folder"):
     root = Tk()
@@ -27,6 +30,7 @@ def open_folder_dialog(title="Select Folder"):
     folder_selected = filedialog.askdirectory(title=title)
     root.destroy()
     return folder_selected
+
 
 def extract_header_info(header):
     exp_raw = header.get('EXPTIME', None)
@@ -41,9 +45,11 @@ def extract_header_info(header):
     binning_str = f"bin{xbin}x{ybin}"
     return exp_sec, date_obs, binning_str
 
+
 def extract_color_from_filename(fname):
     m = COLOR_PATTERN.search(fname)
     return m.group(1).lower() if m else 'unknown'
+
 
 def log_statistics_to_csv(frame_type, stats_dict, output_dir):
     os.makedirs(output_dir, exist_ok=True)
@@ -59,47 +65,56 @@ def log_statistics_to_csv(frame_type, stats_dict, output_dir):
         row = {k: stats_dict.get(k, "") for k in fieldnames}
         writer.writerow(row)
 
+
 def rms(data):
     data = np.asarray(data)
     return np.sqrt(np.mean(np.square(data)))
+
 
 def compute_and_print_stats(name, arr):
     valid = arr[np.isfinite(arr)]
     if valid.size == 0:
         print(f"{name} has no finite pixels to compute stats.")
         return None
-    stats = reza.statist(valid)  # expects sequence-like [min, max, mean, std]
+    stats = reza.statist(valid)
     print(f"{name} Stats:")
     print(f"min = {stats[0]:.2f}   max = {stats[1]:.2f}")
     print(f"mean = {stats[2]:.4f}   std = {stats[3]:.4f}")
     return stats, valid
 
-# --- Replacement utilities for clipped pixels ---
-def replace_nans_with_local_median(img, primary_size=3, fallback_size=20, mode='mirror'):
-    """
-    img: 2D array with NaNs marking invalid pixels
-    primary_size: small window size (odd)
-    fallback_size: larger window size (odd)
-    returns: filled array, primary_fill_mask, fallback_fill_mask
-    """
-    def nanmedian_func(values):
-        return np.nanmedian(values)
 
-    # primary pass (e.g., 3x3)
-    primary_filtered = generic_filter(img, nanmedian_func, size=primary_size, mode=mode)
-    primary_fill_mask = np.isnan(img) & ~np.isnan(primary_filtered)
+# -----------------------------
+# PARALLEL HELPERS
+# -----------------------------
+def parallel_sigma_clip_chunk(chunk):
+    clipped = sigma_clip(chunk, sigma=4, cenfunc='median')
+    return clipped.filled(np.nan)
 
-    # fallback pass for remaining NaNs (e.g., 20x20)
-    still_nan_mask = np.isnan(img) & np.isnan(primary_filtered)
-    fallback_filtered = generic_filter(img, nanmedian_func, size=fallback_size, mode=mode)
-    fallback_fill_mask = still_nan_mask & ~np.isnan(fallback_filtered)
 
-    # compose final filled image
-    filled = img.copy()
-    filled[primary_fill_mask] = primary_filtered[primary_fill_mask]
-    filled[fallback_fill_mask] = fallback_filtered[fallback_fill_mask]
+def parallel_median_replacement_chunk(chunk):
+    primary = median_filter(chunk, size=3, mode='mirror')
+    primary_mask = np.isnan(chunk) & ~np.isnan(primary)
+    filled = chunk.copy()
+    filled[primary_mask] = primary[primary_mask]
 
-    return filled, primary_fill_mask, fallback_fill_mask
+    still_nan = np.isnan(filled)
+    if np.any(still_nan):
+        fallback = median_filter(filled, size=20, mode='mirror')
+        fallback_mask = still_nan & ~np.isnan(fallback)
+        filled[fallback_mask] = fallback[fallback_mask]
+    else:
+        fallback_mask = np.zeros_like(chunk, dtype=bool)
+
+    return filled, primary_mask, fallback_mask
+
+
+def parallel_process(image, func):
+    n = os.cpu_count()
+    chunks = np.array_split(image, n, axis=0)
+    with ProcessPoolExecutor() as ex:
+        results = list(ex.map(func, chunks))
+    return results
+
 
 # --- Core processing ---
 def create_master_frame(folder_path, output_path, frame_type="dark"):
@@ -130,19 +145,19 @@ def create_master_frame(folder_path, output_path, frame_type="dark"):
             continue
 
     if not selected_files:
-        print(f"❌ No files found with mode tag '{MODE_TAG}' in {frame_type} folder.")
+        print(f"No files found with mode tag '{MODE_TAG}' in {frame_type} folder.")
         return
 
     valid_exp_times = [e for e in exp_times if e is not None]
     if valid_exp_times and len(set(valid_exp_times)) > 1:
-        print(f"❌ Exposure times are not uniform in {frame_type} folder.")
+        print("Exposure times are not uniform.")
         return
 
     mode_str = MODE_TAG
     exp_str = f"{valid_exp_times[0]:.5f}s" if valid_exp_times else "unknownExp"
     date_str = date_obs_list[0] if date_obs_list else "unknown-date"
     bin_str = binning_list[0] if binning_list else "bin1x1"
-    color_for_master = Counter(colors).most_common(1)[0][0] if frame_type.lower() == 'flat' and colors else ''
+    color_for_master = Counter(colors).most_common(1)[0][0] if frame_type.lower() == 'flat' else ''
     color_tag = f"_{color_for_master}" if color_for_master else ""
     base_name = f"master{frame_type}{color_tag}_{exp_str}_{date_str}_{bin_str}_{mode_str}_clipped_and_replaced"
     output_file = os.path.join(output_path, base_name + ".fits")
@@ -151,44 +166,39 @@ def create_master_frame(folder_path, output_path, frame_type="dark"):
     os.makedirs(output_path, exist_ok=True)
     os.makedirs(PLOT_DIR, exist_ok=True)
 
-    # build stack
     first_data_path = os.path.join(folder_path, selected_files[0])
-    try:
-        shape = fits.getdata(first_data_path).shape
-    except Exception as e:
-        print(f"❌ Unable to read data shape from {selected_files[0]}: {e}")
-        return
+    shape = fits.getdata(first_data_path).shape
 
     stack = np.zeros(shape, dtype=float)
     for fname in selected_files:
-        fpath = os.path.join(folder_path, fname)
-        try:
-            with fits.open(fpath) as hdul:
-                data = hdul[0].data.astype(float)
-                stack += data
-        except Exception as e:
-            print(f"⚠️ Skipping {fname} during stacking: {e}")
-            continue
+        with fits.open(os.path.join(folder_path, fname)) as hdul:
+            stack += hdul[0].data.astype(float)
 
     master = stack / len(selected_files)
 
     if frame_type.lower() == 'flat':
-        print("Applying median filter to suppress stars...")
         master = median_filter(master, size=50, mode="reflect")
 
-    # sigma clip
-    clipped = sigma_clip(master, sigma=4, cenfunc='median')
-    clipped_nan = clipped.filled(np.nan)
+    # ----------------------------
+    # PARALLEL SIGMA CLIP
+    # ----------------------------
+    clipped_chunks = parallel_process(master, parallel_sigma_clip_chunk)
+    clipped_nan = np.vstack(clipped_chunks)
 
-    # replace NaNs: 3x3 then 20x20 fallback
-    filled, primary_mask, fallback_mask = replace_nans_with_local_median(clipped_nan, primary_size=3, fallback_size=20, mode='mirror')
+    # ----------------------------
+    # PARALLEL MEDIAN REPLACEMENT
+    # ----------------------------
+    filled_chunks = parallel_process(clipped_nan, parallel_median_replacement_chunk)
+
+    filled = np.vstack([fc[0] for fc in filled_chunks])
+    primary_mask = np.vstack([fc[1] for fc in filled_chunks])
+    fallback_mask = np.vstack([fc[2] for fc in filled_chunks])
 
     stats_res = compute_and_print_stats("Final clipped and replaced", filled)
     if stats_res is None:
         return
     stats_vals, valid_data = stats_res
 
-    # write final FITS
     hdu = fits.PrimaryHDU(filled)
     hdr = hdu.header
     hdr['NFRAMES'] = len(selected_files)
@@ -199,55 +209,55 @@ def create_master_frame(folder_path, output_path, frame_type="dark"):
     hdr['NREPL3'] = int(np.sum(primary_mask))
     hdr['NREPL20'] = int(np.sum(fallback_mask))
     if frame_type.lower() == 'flat':
-        hdr['FILTER'] = color_for_master.upper() if color_for_master else 'UNKNOWN'
-    hdr.add_history("Sigma clipped with sigma=4 and replaced NaNs using 3x3 and 20x20 median fallback.")
-    hdu.writeto(output_file, overwrite=True)
-    print(f"✅ Final FITS saved to: {output_file}")
+        hdr['FILTER'] = color_for_master.upper()
+    hdr.add_history("Parallel sigma clip + parallel 3x3 + 20x20 median replacement.")
 
-    # save plot
+
+    hdu.writeto(output_file, overwrite=True)
+    print(f"Saved: {output_file}")
+
+    # Plot
     plt.figure(figsize=(12, 6), dpi=300)
     plt.subplot(1, 2, 1)
     plt.hist(valid_data, bins=50, edgecolor='black')
-    plt.title("Clipped and Replaced Histogram", fontsize=12)
-    plt.xlabel("Pixel value", fontsize=10)
-    plt.ylabel("Count", fontsize=10)
+    plt.title("Clipped/Replacement Histogram")
+
     plt.subplot(1, 2, 2)
-    plt.imshow(filled, cmap='gray', origin='lower', interpolation='none')
-    plt.title("Clipped and Replaced Image", fontsize=12)
-    plt.colorbar(shrink=0.8, label="Pixel value")
+    plt.imshow(filled, cmap='gray', origin='lower')
+    plt.title("Clipped + Replaced Image")
+    plt.colorbar(shrink=0.8)
+
     plt.tight_layout()
     plt.savefig(plot_file, dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"📁 Plot saved to: {plot_file}")
+    print(f"Saved plot: {plot_file}")
 
-# --- GUI launcher ---
+
+# --- GUI ---
 def launch_gui():
     def on_select(frame_type):
         root.destroy()
-        folder_title = f"Select Folder with {frame_type.capitalize()} Frames"
-        selected_folder = open_folder_dialog(folder_title)
-        if not selected_folder:
-            print("No folder selected, aborting.")
+        folder = open_folder_dialog(f"Select Folder with {frame_type.capitalize()} Frames")
+        if not folder:
+            print("No folder selected.")
             return
-        os.makedirs(MASTER_OUTPUT_DIR, exist_ok=True)
-        create_master_frame(selected_folder, MASTER_OUTPUT_DIR, frame_type=frame_type)
+        create_master_frame(folder, MASTER_OUTPUT_DIR, frame_type)
 
     root = Tk()
     root.title("Choose Master Frame Type")
     root.geometry("320x170")
-    Label(root, text="Select the type of master frame to generate:", pady=10).pack()
+    Label(root, text="Select master frame type:", pady=10).pack()
     Button(root, text="Masterdark", width=24, command=lambda: on_select("dark")).pack(pady=6)
     Button(root, text="Masterflat", width=24, command=lambda: on_select("flat")).pack(pady=6)
     Button(root, text="Masterbias", width=24, command=lambda: on_select("bias")).pack(pady=6)
     root.mainloop()
 
-# --- Run GUI ---
+
 if __name__ == "__main__":
     launch_gui()
 
-    # --- Completion Sound ---
     try:
         import winsound
-        winsound.Beep(1000, 500)  # Frequency: 1000 Hz, Duration: 500 ms
+        winsound.Beep(1000, 500)
     except ImportError:
-        print('\a')  # Fallback for non-Windows systems
+        print('\a')

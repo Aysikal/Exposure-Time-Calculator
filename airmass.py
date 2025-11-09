@@ -149,11 +149,11 @@ def airmass_function(
 # -----------------------------------------------------------------------------
 X_local = airmass_function(
     date_str="2025-10-22",
-    hour=21,
-    minute=0,
-    RA = "05:58:25.03527239713",
-    DEC = "+00:05:13.5798366821",
+    hour=19,
+    minute=45,
+    RA = "23:03:16",
+    DEC = "-00:12:21",
     name="test star",
     input_timezone="Asia/Tehran",
-    plot_night_curve=True
+    plot_night_curve=False
 )

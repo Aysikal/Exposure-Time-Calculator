@@ -235,7 +235,8 @@ for idx, row in df.iterrows():
         'std': np.std(box),
         'min': np.min(box),
         'max': np.max(box),
-        'n_pixels': box.size
+        'n_pixels': box.size,
+        'box_sum' : np.sum(box)
     }
     results.append(stats)
 
@@ -295,43 +296,84 @@ plt.text(
 plt.show()
 
 
-# Load existing CSV
-csv_file = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Codes\moon_alt_sep_verification_with_RA_DEC.csv"
-df = pd.read_csv(csv_file)
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 
-moon_alts = []
-fli_list = []
+# Constants
+PIXEL_AREA = (1.8 * 0.47 * 2)**2  # arcsec^2
+ZERO_POINT = 24.0316
+EXPOSURE_TIME = 19  # seconds
+EXTINCTION_COEFF = 0.2
 
-for idx, row in df.iterrows():
-    fits_path = row['file']
-    try:
-        with fits.open(fits_path) as hdul:
-            utc_time_str = hdul[0].header['DATE']
-    except Exception as e:
-        print(f"Skipping {fits_path} due to FITS read error: {e}")
-        moon_alts.append(None)
-        fli_list.append(None)
-        continue
+# Load sky box statistics
+stats_file = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Codes\sky_box_statistics.csv"
+df_stats = pd.read_csv(stats_file)
 
-    t_utc = Time(utc_time_str, scale='utc', location=SITE_LOCATION)
-    altaz_frame = AltAz(obstime=t_utc, location=SITE_LOCATION)
+# Compute flux per pixel per second
+df_stats['flux_per_pixel_per_sec'] = df_stats['box_sum'] / (df_stats['n_pixels'] * EXPOSURE_TIME)
 
-    # Moon altitude
-    moon = get_body("moon", t_utc, SITE_LOCATION).transform_to(altaz_frame)
-    moon_alts.append(moon.alt.degree)
+# Compute surface brightness
+df_stats['mu_mag_arcsec2'] = ZERO_POINT - 2.5 * np.log10(df_stats['flux_per_pixel_per_sec'] / PIXEL_AREA)
 
-    # Sun position
-    sun = get_body("sun", t_utc, SITE_LOCATION)
-    # Geocentric elongation ψ
-    psi = sun.separation(get_body("moon", t_utc, SITE_LOCATION)).to(u.rad).value
-    # Illuminated fraction
-    fli = (1 - np.cos(psi)) / 2
-    fli_list.append(fli)
+# Print results
+print(df_stats[['file', 'box_sum', 'n_pixels', 'flux_per_pixel_per_sec', 'mu_mag_arcsec2']])
 
-df['moon_alt'] = moon_alts
-df['fli'] = fli_list
+# Save back to CSV
+df_stats.to_csv(stats_file, index=False)
+print(f"\n✅ Surface brightness values saved to: {stats_file}")
 
-df.to_csv(csv_file, index=False)
-print("Moon altitudes and illuminated fraction saved to:", csv_file)
-print(df[['file', 'moon_alt', 'fli']].head())
+# Load moon separation and altitude data
+df_sep = pd.read_csv("moon_alt_sep_verification_with_RA_DEC.csv")
 
+# Merge with sky box stats
+df = pd.merge(df_sep, df_stats[['file', 'mu_mag_arcsec2']], on="file")
+
+# Compute airmass from altitude
+alt_deg = df['alt_computed'].values
+airmass = 1 / np.cos(np.radians(90 - alt_deg))
+
+# Apply extinction correction
+mu_observed = df['mu_mag_arcsec2'].values
+mu_corrected = mu_observed - EXTINCTION_COEFF * airmass
+
+# Add to DataFrame
+df['airmass'] = airmass
+df['mu_mag_arcsec2_corrected'] = mu_corrected
+
+# Save updated CSV
+df.to_csv("moon_alt_sep_verification_with_RA_DEC.csv", index=False)
+print("\n✅ Extinction-corrected magnitudes saved to: moon_alt_sep_verification_with_RA_DEC.csv")
+print(df[['file', 'mu_mag_arcsec2', 'airmass', 'mu_mag_arcsec2_corrected']].head())
+
+# Fit exponential decay model
+def exp_decay(x, a, b, c):
+    return a * np.exp(-b * x) + c
+
+x = df['sep_computed'].values
+y = df['mu_mag_arcsec2_corrected'].values
+
+params, _ = curve_fit(exp_decay, x, y, p0=[max(y), 0.05, min(y)])
+a, b, c = params
+
+# Plot scatter + fit
+plt.figure(figsize=(8,6))
+plt.scatter(x, y, alpha=0.7, label="Corrected Magnitudes")
+plt.plot(x, exp_decay(x, *params), 'g-', label="Exponential fit")
+
+plt.xlabel("Moon-Target Separation (degrees)")
+plt.ylabel("Sky Box Magnitude (mag/arcsec²)")
+plt.gca().invert_yaxis()
+plt.title("Extinction-Corrected Sky Magnitude vs Moon Separation")
+plt.legend()
+plt.grid(True)
+
+# Annotate fit parameters
+param_text = f"a = {a:.3f}\nb = {b:.3f}\nc = {c:.3f}"
+plt.text(0.05, 0.95, param_text, transform=plt.gca().transAxes,
+         fontsize=11, verticalalignment='top',
+         bbox=dict(facecolor='white', alpha=0.7, edgecolor='gray'))
+
+plt.tight_layout()
+plt.show()

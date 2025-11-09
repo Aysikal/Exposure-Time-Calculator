@@ -5,7 +5,7 @@ import astroalign as aa
 from glob import glob
 
 # 📁 Input and output directories
-input_dir = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\r\high\keep\hot pixels removed"
+input_dir = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8"
 output_dir = os.path.join(input_dir, "aligned")
 os.makedirs(output_dir, exist_ok=True)
 
@@ -44,8 +44,8 @@ for path in fits_files[1:]:
 stacked = np.median(aligned_images, axis=0)
 summed = np.sum(aligned_images, axis=0)
 
-stacked_path = os.path.join(output_dir, "Area95_r_sept30_median.fits")
-sum_path = os.path.join(output_dir, "AREA995_I_sept30_sum.fits")
+stacked_path = os.path.join(output_dir, "97b-8-all-filters-nov4-median.fits")
+sum_path = os.path.join(output_dir, "97b-8-all-filters-nov4-sum.fits")
 
 fits.writeto(stacked_path, stacked.astype(np.float32), header=ref_header, overwrite=True)
 fits.writeto(sum_path, summed.astype(np.float32), header=ref_header, overwrite=True)

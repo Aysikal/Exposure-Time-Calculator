@@ -7,10 +7,13 @@ import matplotlib.pyplot as plt
 from astropy.visualization import ZScaleInterval, ImageNormalize
 
 # === User settings ===
-fits_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\GRB251013c\high\hot pixels removed\aligned\reduced\stacked_sum.fits"
-exptime_s = 6739.0  # seconds, integrated total exposure
+fits_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\rezaei_saba_farideH_2025_10_22\GRB251013c\high\hot pixels removed\aligned\3 min\aligned_grb_i_2025_10_22_1x1_exp00.03.20.000_000001_High_1_cycleclean_iter3.fit"
+exptime_s = 1 # seconds, integrated total exposure
 print(f"Using fixed total exposure time (s) = {exptime_s}")
-
+K_i = 0.15
+K_g = 0.35
+K_r = 0.2
+X = 1.3
 # approximate pixel coordinates (x, y)
 targets = {
     "GRB_251013C": (2090.9, 1497.5),
@@ -86,7 +89,9 @@ def refine_center(img, x0, y0, box=7):
         return x0, y0
 
 def measure_flux(image, x, y, r, rin, rout, exptime):
-    cutout = Cutout2D(image, (x, y), (2*rout, 2*rout), mode='partial')
+    cutout_size = 120   # or 100, 150, etc.
+    cutout = Cutout2D(image, (x, y), cutout_size, mode='partial')
+
     cx, cy = cutout.to_cutout_position((x, y))
     img = cutout.data
 
@@ -166,9 +171,10 @@ for ref_name, ref_mag in ref_stars_mag.items():
             zp_list.append(zp)
 
 ZP = np.mean(zp_list)
+corrected_ZP = ZP + (K_i)*(X)
 ZP_std = np.std(zp_list)
 print(f"\nPhotometric Zero Point = {ZP:.3f} ± {ZP_std:.3f}")
-
+print(f"\nPhotometric Zero Point corrected for k = {corrected_ZP:.3f}")
 # === Compute limiting magnitudes with read noise included ===
 # Sky sigma from reference star annulus
 sigma_sky_adu = None
@@ -188,13 +194,13 @@ sigma_total_per_pixel = np.sqrt(sigma_sky_adu**2 + read_noise_adu**2)
 # Total aperture noise
 sigma_total_ap = np.sqrt(N_pix) * sigma_total_per_pixel
 
-def limiting_mag_snr(ZP, sigma_total_ap, exptime_s, SNR):
+def limiting_mag_snr(corrected_ZP, sigma_total_ap, exptime_s, SNR):
     F_lim = SNR * sigma_total_ap / exptime_s       # counts/s
-    m_lim = ZP - 2.5 * np.log10(F_lim)
+    m_lim = corrected_ZP - 2.5 * np.log10(F_lim)
     return m_lim, F_lim
 
-m3, F3 = limiting_mag_snr(ZP, sigma_total_ap, exptime_s, 3)
-m5, F5 = limiting_mag_snr(ZP, sigma_total_ap, exptime_s, 5)
+m3, F3 = limiting_mag_snr(corrected_ZP, sigma_total_ap, exptime_s, 3)
+m5, F5 = limiting_mag_snr(corrected_ZP, sigma_total_ap, exptime_s, 5)
 
 print("\n=== Limiting Magnitudes with Read Noise Included ===")
 print(f"Sky sigma = {sigma_sky_adu:.3f} ADU")
