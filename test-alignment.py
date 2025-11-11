@@ -1,75 +1,56 @@
 import os
-import glob
 import numpy as np
 from astropy.io import fits
-import astroalign as aa
+from astropy.wcs import WCS
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
+from astropy.nddata.utils import Cutout2D
 
-# ----------------------------------------------------
-# CONFIG
-# ----------------------------------------------------
-INPUT_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\sept 30 area 95 g low\keep"           # folder with your raw FITS
-ALIGNED_DIR = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\sept 30 area 95 g low\keep\aligned"      # output folder for aligned files
-STACKED_PATH = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\sept 30 area 95 g low\keep\stacked.fits"
+# ---------------- User Settings ---------------- #
+folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\i"
+cutout_size = 50  # pixels around the star
+# ------------------------------------------------ #
 
-os.makedirs(ALIGNED_DIR, exist_ok=True)
+# Get all FITS files in folder
+fits_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.fit')]
+fits_files.sort()
 
-# ----------------------------------------------------
-# UTILITY
-# ----------------------------------------------------
-def load_fits_le(path):
-    """Load FITS and ensure little-endian array (for numpy compatibility)."""
-    data = fits.getdata(path)
-    header = fits.getheader(path)
+# Load first image to select stars
+ref_file = fits_files[0]
+with fits.open(ref_file) as hdul:
+    data = hdul[0].data
+    wcs = WCS(hdul[0].header)
 
-    # Convert from big-endian to little-endian if necessary
-    if data.dtype.byteorder == ">" or (data.dtype.byteorder == "=" and np.little_endian is False):
-        data = data.byteswap().newbyteorder()
+fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+ax.imshow(data, cmap='gray', origin='lower', vmin=np.percentile(data, 5), vmax=np.percentile(data, 95))
+ax.set_title("Click on a star, then close the window")
+coords = []
 
-    return data.astype(np.float32), header
+def onclick(event):
+    if event.inaxes == ax:
+        x, y = event.xdata, event.ydata
+        coords.append((x, y))
+        ax.plot(x, y, 'rx')
+        fig.canvas.draw()
 
+cid = fig.canvas.mpl_connect('button_press_event', onclick)
+plt.show()
 
-# ----------------------------------------------------
-# LOAD FILES
-# ----------------------------------------------------
-files = sorted(glob.glob(os.path.join(INPUT_DIR, "*.fit*")))
-if len(files) < 2:
-    raise SystemExit("Need at least two FITS files to align!")
+print("Selected pixel coordinates:", coords)
 
-# Choose middle frame as reference
-ref_path = files[len(files)//2]
-ref_data, ref_header = load_fits_le(ref_path)
-
-print(f"Reference frame: {os.path.basename(ref_path)}")
-
-# ----------------------------------------------------
-# ALIGN ALL FRAMES
-# ----------------------------------------------------
-aligned_images = [ref_data]
-
-for fpath in files:
-    fname = os.path.basename(fpath)
-    if fpath == ref_path:
-        continue
-
-    try:
-        data, _ = load_fits_le(fpath)
-        aligned, footprint = aa.register(data, ref_data)
-        aligned_images.append(aligned)
-        out_path = os.path.join(ALIGNED_DIR, f"aligned_{fname}")
-        fits.writeto(out_path, aligned.astype(np.float32), ref_header, overwrite=True)
-        print(f"✅ {fname} aligned successfully")
-
-    except aa.MaxIterError:
-        print(f"❌ {fname} failed to align (max iterations)")
-    except Exception as e:
-        print(f"❌ {fname} failed: {e}")
-
-# ----------------------------------------------------
-# STACK
-# ----------------------------------------------------
-if aligned_images:
-    stack = np.nanmedian(np.stack(aligned_images, axis=0), axis=0)
-    fits.writeto(STACKED_PATH, stack.astype(np.float32), ref_header, overwrite=True)
-    print(f"\n📦 Stacked FITS saved to: {STACKED_PATH}")
-else:
-    print("⚠️ No frames aligned successfully — stack not created.")
+# Loop over all files and show cutouts, check RA/Dec
+for f in fits_files:
+    with fits.open(f) as hdul:
+        data = hdul[0].data
+        wcs = WCS(hdul[0].header)
+        print(f"\nFile: {f}")
+        for i, (x, y) in enumerate(coords):
+            cutout = Cutout2D(data, (x, y), size=cutout_size)
+            cutout_data = cutout.data
+            ra, dec = wcs.wcs_pix2world(x, y, 0)
+            print(f"Star {i+1}: RA={ra:.6f}, Dec={dec:.6f}")
+            
+            plt.figure()
+            plt.imshow(cutout_data, cmap='gray', origin='lower')
+            plt.title(f"{os.path.basename(f)} - Star {i+1}")
+            plt.show()

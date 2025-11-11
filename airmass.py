@@ -35,8 +35,8 @@ SITE_OBSERVER  = Observer(location=SITE_LOCATION,
 # -----------------------------------------------------------------------------
 # Optional custom time range for plotting (local time)
 # -----------------------------------------------------------------------------
-LOCAL_START_TIME = "2025-10-28 18:00"  # format: YYYY-MM-DD HH:MM
-LOCAL_END_TIME   = "2025-10-29 04:00"
+LOCAL_START_TIME = "2025-11-5 01:05"  # format: YYYY-MM-DD HH:MM
+LOCAL_END_TIME   = "2025-11-5 04:00"
 LOCAL_TIMEZONE   = "Asia/Tehran"
 
 # -----------------------------------------------------------------------------
@@ -48,7 +48,7 @@ def airmass_function(
     DEC: str,
     name: str,
     input_timezone: str = "UTC",
-    plot_night_curve: bool = False,
+    plot_night_curve: bool = True,
     n_steps: int = 200,
 ) -> float:
     """
@@ -148,12 +148,12 @@ def airmass_function(
 # Example usage
 # -----------------------------------------------------------------------------
 X_local = airmass_function(
-    date_str="2025-10-22",
-    hour=19,
-    minute=45,
-    RA = "23:03:16",
-    DEC = "-00:12:21",
+    date_str="2025-11-05",
+    hour=23,
+    minute=5,
+    RA = "05:58:25.3",
+    DEC = "+00:05:13.5",
     name="test star",
     input_timezone="Asia/Tehran",
-    plot_night_curve=False
+    plot_night_curve=True
 )

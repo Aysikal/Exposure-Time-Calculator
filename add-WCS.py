@@ -3,7 +3,7 @@ import glob
 import os
 
 reference = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\97b-8-wcs.fits"
-targets_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\g"
+targets_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\clear"
 
 targets = glob.glob(os.path.join(targets_folder, "*.fit")) \
         + glob.glob(os.path.join(targets_folder, "*.fits"))

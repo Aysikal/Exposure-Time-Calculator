@@ -26,8 +26,8 @@ OUTPUT_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\Star Coords\ext
 # ------------------------------------------------------
 # BOX SIZE
 # ------------------------------------------------------
-PSF_ARCSEC = 0.7
-PIXEL_SCALE = 0.047 * 1.8
+PSF_ARCSEC = 1
+PIXEL_SCALE = 0.101 #arcsecond
 BOX_FACTOR = 10.0
 BOX_SIZE_PX = round((BOX_FACTOR * PSF_ARCSEC) / PIXEL_SCALE)
 if BOX_SIZE_PX % 2 == 0:

@@ -27,7 +27,7 @@ def ps1_to_sdss(ps1_df):
 # ---------------- Main code ----------------
 
 # Path to your existing PS1 CSV
-csv_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\PAN-star\GRB_stars_compact.csv"
+csv_path = r"C:\Users\AYSAN\Desktop\project\INO\ETC\PAN-star\97b-8_compact_top100.csv"
 
 # Read the CSV
 ps1_table = pd.read_csv(csv_path)

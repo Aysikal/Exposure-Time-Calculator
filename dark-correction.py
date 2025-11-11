@@ -99,7 +99,7 @@ def dark_subtract(raw_folder, masterdark_map, output_folder):
 
 if __name__ == "__main__":
     raw_folder = open_folder_dialog("Select Folder with Raw FITS Frames")
-    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\dark_corrected"
+    output_folder = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\clear\dark_corrected"
 
     # Gather raw file list
     raw_files = sorted(f for f in os.listdir(raw_folder) if f.lower().endswith((".fits", ".fit")))

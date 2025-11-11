@@ -117,76 +117,50 @@ def visibility_plot(
         plt.tight_layout()
         plt.show()
 
-
-# Airmass Function ─────────────────────────────────────────────────────
-from astropy.coordinates import SkyCoord, EarthLocation, AltAz
-from astropy.time import Time
-from zoneinfo import ZoneInfo
-import numpy as np
-from datetime import datetime
-from typing import Union
-
+# -------------------------------------------------------------------
 # Site configuration
+# -------------------------------------------------------------------
 SITE_NAME      = "INO"
 SITE_LAT, SITE_LON, SITE_ELEV = 35.674, 51.3188, 3600
-SITE_LOCATION  = EarthLocation(lat=SITE_LAT, lon=SITE_LON, height=SITE_ELEV)
+SITE_LOCATION  = EarthLocation(lat=SITE_LAT*u.deg,
+                               lon=SITE_LON*u.deg,
+                               height=SITE_ELEV*u.m)
+LOCAL_TIMEZONE   = "Asia/Tehran"
 
-def compute_airmass(
+# Optional custom time range for plotting (local time)
+LOCAL_START_TIME = "2025-11-5 01:05"
+LOCAL_END_TIME   = "2025-11-5 04:00"
+
+def airmass_function(
     date_str: str,
     hour: int,
     minute: int,
     RA: str,
     DEC: str,
-    input_timezone: str = "Asia/Tehran"
+    input_timezone: str = LOCAL_TIMEZONE
 ) -> float:
-    """
-    Compute the airmass of a target at a given date/time and location.
 
-    Parameters
-    ----------
-    date_str : str
-        Date in 'YYYY-MM-DD' format.
-    hour : int
-        Hour of observation in input_timezone.
-    minute : int
-        Minute of observation in input_timezone.
-    RA : str
-        Right Ascension in 'HH:MM:SS' format.
-    DEC : str
-        Declination in '+DD:MM:SS' or '-DD:MM:SS' format.
-    input_timezone : str, optional
-        Timezone of the input time (default is 'UTC').
+    tz_in  = ZoneInfo(input_timezone)
+    tz_utc = ZoneInfo("UTC")
 
-    Returns
-    -------
-    float
-        Airmass at the specified date/time.
-    """
-
-    # Convert input time to UTC
-    tz_in = ZoneInfo(input_timezone)
     dt_local = datetime.strptime(f"{date_str} {hour:02d}:{minute:02d}", "%Y-%m-%d %H:%M")
     dt_local = dt_local.replace(tzinfo=tz_in)
-    dt_utc = dt_local.astimezone(ZoneInfo("UTC"))
+    dt_utc   = dt_local.astimezone(tz_utc)
     obs_time = Time(dt_utc)
 
-    # Parse RA/DEC to decimal degrees
     ra_h, ra_m, ra_s = map(float, RA.split(":"))
     ra_deg = ra_h*15 + ra_m*0.25 + ra_s*(0.25/60)
-
     d, m, s = map(float, DEC.split(":"))
     dec_sign = 1 if d >= 0 else -1
-    dec_deg = dec_sign*(abs(d) + m/60 + s/3600)
+    dec_deg  = dec_sign*(abs(d) + m/60 + s/3600)
 
-    # Compute altitude
-    coord = SkyCoord(ra=ra_deg, dec=dec_deg, frame="icrs", unit='deg')
-    alt = coord.transform_to(AltAz(obstime=obs_time, location=SITE_LOCATION)).alt.degree
+    coord  = SkyCoord(ra=ra_deg*u.deg, dec=dec_deg*u.deg, frame="icrs")
+    alt0   = coord.transform_to(AltAz(obstime=obs_time, location=SITE_LOCATION)).alt.degree
+    z0     = np.radians(90 - alt0)
+    X0     = 1.0 / (np.cos(z0) + 0.50572*(6.07995 + np.degrees(z0))**(-1.6364))
 
-    # Compute airmass (Kasten & Young 1989)
-    z = np.radians(90 - alt)
-    airmass = 1.0 / (np.cos(z) + 0.50572*(6.07995 + np.degrees(z))**(-1.6364))
+    return X0
 
-    return airmass
 
 #airmass = compute_airmass(date_str="2025-10-22", hour=21, minute=0,RA="05:58:25",DEC="+00:05:13",input_timezone="Asia/Tehran"  )# local time
 
@@ -225,9 +199,6 @@ def get_fli(date_str: str, hour: int, minute: int) -> float:
     print(f"Illuminated:   {fli*100:.1f}%")
     return fli
 
-
-# Compute Moon fraction illuminated at 21:00 local time
-#fli = get_fli("2025-10-01", 19, 0)
 
 def overlay_visibility_with_moon(
     star_coords: dict,
@@ -317,13 +288,69 @@ stars = {
 }
 #overlay_visibility_with_moon(stars, date="2025-10-01", moon_alt_limit=25*u.deg, overlay=True)
 
-def calculate_sky_magnitude(offset , fli):
-    # FLI ranges from 0 to 1 (0 = New Moon, 1 = Full Moon)
-    # Assume a constant offset for sky brightness (adjust as needed)
-    offset = 21.0  # Example value (mag/arcsec^2)
-    if fli ==0: 
-          sky_magnitude = offset
-    # Calculate sky brightness (in magnitudes per square arcsecond)
-    else: sky_magnitude = offset + 2.5 * math.log10(1-fli)
+SITE_LAT = 33.674
+SITE_LON = 51.3188
+SITE_ELEV = 3600
+SITE_TIMEZONE = "Asia/Tehran"
+SITE_LOCATION = EarthLocation(lat=SITE_LAT*u.deg, lon=SITE_LON*u.deg, height=SITE_ELEV*u.m)
 
-    return sky_magnitude
+# If you need pixel scale later; not used in brightness calc
+pixscale_arcsec = 0.101 * 2
+
+# ------------------------
+# Exponential fit parameters (mag vs Moon-target separation)
+# ------------------------
+a_fit, b_fit, c_fit = -3, 0.042, 19.705
+
+def exp_decay(x, a, b, c):
+    return a * np.exp(-b * x) + c
+
+def calculate_sky_magnitude(date_str, hour, minute, ra, dec):
+    # Target
+    target_icrs = SkyCoord(ra=ra, dec=dec, unit=(u.hourangle, u.deg))
+
+    # Time setup
+    tz_local = ZoneInfo(SITE_TIMEZONE)
+    dt_local = datetime.strptime(f"{date_str} {hour:02d}:{minute:02d}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_local)
+    dt_utc   = dt_local.astimezone(ZoneInfo("UTC"))
+    t_utc    = Time(dt_utc, scale="utc", location=SITE_LOCATION)
+
+    # Frames
+    altaz_frame = AltAz(obstime=t_utc, location=SITE_LOCATION)
+    target_altaz = target_icrs.transform_to(altaz_frame)
+    alt_deg = float(target_altaz.alt.degree)
+
+    # Airmass (simple sec z, with guards)
+    if alt_deg <= 0:
+        return np.inf  # target below horizon → undefined, return very bright (or handle upstream)
+    z_deg = 90.0 - alt_deg
+    airmass = 1.0 / np.cos(np.radians(z_deg))
+    # Clamp absurd values near horizon
+    airmass = np.clip(airmass, 1.0, 10.0)
+
+    # Moon-target separation
+    moon = get_body("moon", t_utc, SITE_LOCATION)
+    moon_altaz = moon.transform_to(altaz_frame)
+    moon_sep = float(target_altaz.separation(moon_altaz).degree)
+
+    # Base sky mag from separation
+    sky_mag_fit = exp_decay(moon_sep, a_fit, b_fit, c_fit)
+
+    # Extinction correction
+    EXTINCTION_COEFF = 0.2
+    sky_mag_ext_corr = sky_mag_fit - EXTINCTION_COEFF * airmass
+
+    # Fraction of Moon illuminated (ensure strictly > 0 to avoid log10(0))
+    fli_raw = get_fli(date_str, hour, minute)
+    fli = max(float(fli_raw), 1e-3)
+
+    # Phase correction only if Moon is above horizon
+    if float(moon_altaz.alt.deg) > 0:
+        phase_correction = -2.5 * np.log10(fli)
+    else:
+        phase_correction = 0.0
+
+    # Final sky magnitude
+    sky_mag_final = sky_mag_ext_corr + phase_correction
+    return float(sky_mag_final)
+

@@ -1,4 +1,3 @@
-# extinction_pipeline_fixed_aperture_netpos_filter_POSITIVE_K_UTCcheck.py
 import os, math, csv, numpy as np, matplotlib.pyplot as plt
 from datetime import datetime
 import pytz
@@ -14,10 +13,10 @@ ALIGNED_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Outputs\reduced\sept 3
 OUTPUT_TABLE_FOLDER = os.path.join(ALIGNED_FOLDER, "star_tables")
 os.makedirs(OUTPUT_TABLE_FOLDER, exist_ok=True)
 
-RA_HARD, DEC_HARD = "03:53:21", "-00:00:20"
-PSF_ARCSEC = 0.7
-PIXEL_SCALE = 0.047 * 1.8
-BOX_FACTOR, REFINE_RADIUS_FACTOR = 10.0, 10.0
+RA_HARD, DEC_HARD = "05:58:25.3", "+00:05:13.5"
+PSF_ARCSEC = 1
+PIXEL_SCALE = 0.101
+BOX_FACTOR, REFINE_RADIUS_FACTOR = 20.0, 20.0
 Z = ZScaleInterval()
 K_AP, ANN_IN_FACT, ANN_OUT_FACT = 1.0, 3.0, 5.0
 RADIAL_SMOOTH_SIGMA, TAIL_MEDIAN = 2.0, 15

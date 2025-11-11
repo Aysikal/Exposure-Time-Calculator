@@ -3,7 +3,24 @@ from tkinter import simpledialog, messagebox
 import sys
 import numpy as np
 import math
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from astropy.time import Time
+from astropy.coordinates import SkyCoord, AltAz, EarthLocation
+import astropy.units as u
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from ancillary_functions import airmass_function, get_fli, calculate_sky_magnitude
+# -------------------------------------------------------------------
+# Site configuration
+# -------------------------------------------------------------------
+SITE_NAME      = "INO"
+SITE_LAT, SITE_LON, SITE_ELEV = 35.674, 51.3188, 3600
+SITE_LOCATION  = EarthLocation(lat=SITE_LAT*u.deg,
+                               lon=SITE_LON*u.deg,
+                               height=SITE_ELEV*u.m)
+LOCAL_TIMEZONE   = "Asia/Tehran"
+
 
 # -------------------------
 # Main Window Setup
@@ -26,7 +43,7 @@ binning = None
 seeing_conditions = None
 non_linearity_error = 3500 #ADU
 over_exposure_error = 4000 #ADU 
-pixel_scale = 0.047 * 1.8
+pixel_scale = 0.101 
 dc = 0.08
 h = 6.62620e-34
 c = 2.9979250e8
@@ -36,37 +53,28 @@ d = 0.6
 S = np.pi*(D/2)**2 - np.pi*(d/2)**2
 
 # -------------------------
+# Gain (ADU -> electrons)
+# -------------------------
+GAIN = 1  
+
+# -------------------------
 # Filters, Bandwidths, Extinction
 # -------------------------
 CW = {'u': 3560e-10, 'g': 4825e-10, 'r': 6261e-10, 'i': 7672e-10}
 band_width = {'u': 463e-10, 'g': 988e-10, 'r': 1340e-10, 'i': 1064e-10}
-extinction = {'u': 0.404, 'g': 0.35, 'r': 0.2, 'i': 0.15}                  #FIX U 
+extinction = {'u': 0.404, 'g': 0.35, 'r': 0.2, 'i': 0.15}  
 
 # -------------------------
 # System Efficiency
 # -------------------------
-mirror_reflectivity = 0.7  # per mirror
+mirror_reflectivity = 0.5
 mirror_throughput = mirror_reflectivity ** 2
-other_optics = 0.95
-
-# Filter transmission
-eta = {'u': 0.0025, 'g': 0.393, 'r': 0.326, 'i': 0.303}
-
-# CCD quantum efficiency per filter
-QE = {'u': 0.05, 'g':0.7, 'r': 0.75, 'i': 0.57}
-
-# Total system efficiency
-E = {}
-for f in eta:
-    E[f] = eta[f] * mirror_throughput * QE.get(f, 0.8) * other_optics
+other_optics = 0.8 
+eta = {'u' : 0.0025, 'g' : 0.384 , 'r' : }
+E = {} 
 
 # -------------------------
-# Sky background (placeholder)
-# -------------------------
-offset = {'u': 22, 'g': 22, 'r': 22, 'i': 22, 'z': 22}
-
-# -------------------------
-# Base Dialog
+# GUI & Input functions
 # -------------------------
 class BaseDialog(simpledialog.Dialog):
     def __init__(self, parent, title=None, message=None, prompt=None, options=None, initialvalue='', input_type='string'):
@@ -121,9 +129,6 @@ class BaseDialog(simpledialog.Dialog):
         self.result = None
         self.destroy()
 
-# -------------------------
-# Input Functions
-# -------------------------
 def ask_input(title, message=None, prompt=None, options=None, initialvalue='', input_type='string'):
     dialog = BaseDialog(root, title=title, message=message, prompt=prompt,
                         options=options, initialvalue=initialvalue, input_type=input_type)
@@ -150,12 +155,10 @@ def ask_object_inputs():
     DEC = ask_input("DEC Input", prompt="Enter DEC (DD:MM:SS):")
     filter_options = ["u", "g", "r", "i", "z"]
     filter_choice = ask_input("Filter Selection", prompt="Choose a filter:", options=filter_options)
-    messagebox.showinfo("Magnitude Input", "Enter magnitude in the chosen filter (AB system).")
     magnitude = ask_input("Magnitude Input", prompt="Enter magnitude:", input_type='float')
 
 def ask_system_inputs():
     global binning, seeing_conditions, seeing
-    messagebox.showinfo("System Inputs", "Please enter the system details.")
     binning_choice = ask_input("Binning Selection", prompt="Choose binning (1x1 or 2x2):", options=["1", "2"])
     binning = int(binning_choice)
     seeing_options = ["optimal (0.6 - 0.8 arcseconds)", "minimal (0.8 - 1 arcseconds)",
@@ -171,7 +174,7 @@ def ask_system_inputs():
 
 def ask_date_time():
     global year, month, day, hour, minute
-    messagebox.showinfo("Attention", "Time and date entries MUST be UTC")
+    messagebox.showinfo("Attention", "Time and date entries MUST be local (Tehran time)")
     year = ask_input("Date and Time", prompt="Enter the year (YYYY):", input_type='int')
     month = ask_input("Date and Time", prompt="Enter the month (1-12):", input_type='int')
     day = ask_input("Date and Time", prompt="Enter the day (1-31):", input_type='int')
@@ -182,60 +185,78 @@ def ask_date_time():
 # SNR & Exposure Calculations
 # -------------------------
 def calculate_snr(year, month, day, hour, minute, RA, DEC, seeing, pixel_scale, binning, h, c, CW, filter_choice,
-                  magnitude, extinction, band_width, exposure_time, E, S, get_fli, offset, calculate_sky_magnitude, readnoise):
+                  magnitude, extinction, band_width, exposure_time, E, S, get_fli, calculate_sky_magnitude, readnoise, gain):
 
-    airmass = airmass_function(year, month, day, hour, minute, RA, DEC)
-    npix = (np.pi * ((seeing / pixel_scale) ** 2)) / (binning ** 2)
+    date_str = f"{year}-{month:02d}-{day:02d}"
+    airmass = airmass_function(date_str, hour, minute, RA, DEC)
+
+    npix = np.pi * ((seeing / pixel_scale*2*binning)** 2)
     P = (h * c) / CW[filter_choice]
     m_corrected = magnitude + (airmass * extinction[filter_choice])
     f_nu = 10 ** (-0.4 * (m_corrected + 48.6))
     f_lambda = (f_nu * c) / (CW[filter_choice] ** 2) * 1e-10
     A = (f_lambda * 1e-7 * (band_width[filter_choice] * 1e10) * E[filter_choice] * S * 1e4) / P
-    signal = A * exposure_time
+    # A is flux in ADU (or counts) per second depending on your upstream units. Convert to electrons/sec using gain
+    A_e_per_sec = A * gain
+    signal_e = A_e_per_sec * exposure_time
 
-    fli = get_fli(year, month, day, hour, minute)
-    sky_mag = calculate_sky_magnitude(offset[filter_choice], fli)
+    # get moon info (optional) and compute sky magnitude using RA/DEC
+    fli = get_fli(date_str, hour, minute)
+    sky_mag = calculate_sky_magnitude(date_str, hour, minute, RA, DEC)
     f_nu_s = 10 ** (-0.4 * (sky_mag + 48.6))
     f_lambda_s = (f_nu_s * c) / (CW[filter_choice] ** 2) * 1e-10
     C = (f_lambda_s * 1e-7 * (band_width[filter_choice] * 1e10) * E[filter_choice] * S * 1e4 * (pixel_scale ** 2)) / P
-    N_sky = C * exposure_time
+    # convert sky flux to electrons per second per pixel
+    C_e_per_sec_per_pix = C * gain
+    N_sky_e_per_pix = C_e_per_sec_per_pix * exposure_time
 
-    B = npix * (N_sky + readnoise ** 2)
-    noise = np.sqrt(A * exposure_time + B)
-    return signal / noise
+    # Total sky electrons inside aperture (npix is number of pixels in aperture)
+    B = npix * (N_sky_e_per_pix + readnoise ** 2)
+    noise = np.sqrt(max(signal_e, 0.0) + B)
+    if noise <= 0:
+        return 0.0
+    return signal_e / noise
 
-def solve_for_t(A, npix, C, readnoise, s):
-    a = A**2
-    b = -s**2 * (A + npix * C)
-    c = -s**2 * npix * readnoise**2
+def solve_for_t(A_e_per_sec, npix, C_e_per_sec_per_pix, readnoise, s):
+    # Solve quadratic for t using electrons/sec quantities:
+    # SNR^2 = (A t)^2 / (A t + npix*(C t + rn^2))
+    # Rearranged: (A^2) t^2 - s^2 (A + npix*C) t - s^2 npix rn^2 = 0
+    a = A_e_per_sec ** 2
+    b = -s**2 * (A_e_per_sec + npix * C_e_per_sec_per_pix)
+    c = -s**2 * npix * (readnoise ** 2)
     disc = b**2 - 4*a*c
     if disc < 0:
         return None
     t1 = (-b + math.sqrt(disc)) / (2*a)
     t2 = (-b - math.sqrt(disc)) / (2*a)
-    if t1 >= 0 and t2 >= 0: return min(t1,t2)
-    if t1 >= 0: return t1
-    if t2 >= 0: return t2
-    return None
+    candidates = [t for t in (t1, t2) if t is not None and t >= 0]
+    if not candidates:
+        return None
+    return min(candidates)
 
 def calculate_exposure_time(snr_value, year, month, day, hour, minute, RA, DEC, seeing, pixel_scale, binning,
                             h, c, CW, filter_choice, magnitude, extinction, band_width, E, S, get_fli, offset,
-                            calculate_sky_magnitude, readnoise):
-    airmass = airmass_function(year, month, day, hour, minute, RA, DEC)
-    npix = (np.pi * ((seeing / pixel_scale) ** 2)) / (binning ** 2)
+                            calculate_sky_magnitude, readnoise, gain):
+
+    date_str = f"{year}-{month:02d}-{day:02d}"
+    airmass = airmass_function(date_str, hour, minute, RA, DEC)
+
+    npix = np.pi * ((seeing / pixel_scale*2*binning)** 2)
     P = (h * c) / CW[filter_choice]
     m_corrected = magnitude + (airmass * extinction[filter_choice])
     f_nu = 10 ** (-0.4 * (m_corrected + 48.6))
     f_lambda = (f_nu * c) / (CW[filter_choice] ** 2) * 1e-10
     A = (f_lambda * 1e-7 * (band_width[filter_choice] * 1e10) * E[filter_choice] * S * 1e4) / P
+    A_e_per_sec = A * gain
 
-    fli = get_fli(year, month, day, hour, minute)
-    sky_mag = calculate_sky_magnitude(offset[filter_choice], fli)
+    fli = get_fli(date_str, hour, minute)
+    sky_mag = calculate_sky_magnitude(date_str, hour, minute, RA, DEC)
     f_nu_s = 10 ** (-0.4 * (sky_mag + 48.6))
     f_lambda_s = (f_nu_s * c) / (CW[filter_choice] ** 2) * 1e-10
     C = (f_lambda_s * 1e-7 * (band_width[filter_choice] * 1e10) * E[filter_choice] * S * 1e4 * (pixel_scale ** 2)) / P
+    C_e_per_sec_per_pix = C * gain
 
-    return solve_for_t(A, npix, C, readnoise, snr_value)
+    return solve_for_t(A_e_per_sec, npix, C_e_per_sec_per_pix, readnoise, snr_value)
 
 # -------------------------
 # User Interaction
@@ -271,8 +292,8 @@ def exp_calculator():
 def process_snr_calculation(exposure_time):
     snr = calculate_snr(year, month, day, hour, minute, RA, DEC, seeing, pixel_scale, binning,
                         h, c, CW, filter_choice, magnitude, extinction, band_width,
-                        exposure_time, E, S, get_fli, offset, calculate_sky_magnitude, readnoise)
-    message = f"""Calculated SNR: {snr:.2f}"""
+                        exposure_time, E, S, get_fli, calculate_sky_magnitude, readnoise, GAIN)
+    message = f"Calculated SNR: {snr:.2f}"
     print(message)
     messagebox.showinfo("SNR Calculation Result", message)
     sys.exit()
@@ -280,8 +301,8 @@ def process_snr_calculation(exposure_time):
 def process_exposure_time_calculation(snr_value):
     exposure_time = calculate_exposure_time(snr_value, year, month, day, hour, minute, RA, DEC, seeing,
                                             pixel_scale, binning, h, c, CW, filter_choice, magnitude,
-                                            extinction, band_width, E, S, get_fli, offset, calculate_sky_magnitude,
-                                            readnoise)
+                                            extinction, band_width, E, S, get_fli, calculate_sky_magnitude,
+                                            readnoise, GAIN)
     if exposure_time is None:
         message = "Unable to calculate exposure time with given parameters."
     else:

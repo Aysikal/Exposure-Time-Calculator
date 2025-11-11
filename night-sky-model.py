@@ -25,7 +25,7 @@ SITE_TIMEZONE = "Asia/Tehran"
 
 SITE_LOCATION = EarthLocation(lat=SITE_LAT*u.deg, lon=SITE_LON*u.deg, height=SITE_ELEV*u.m)
 SITE_OBSERVER = Observer(location=SITE_LOCATION, timezone=SITE_TIMEZONE, name=SITE_NAME)
-
+EXPOSURE_TIME = 19
 # ───────────────────────────────────────────────────────────────
 # Helper: convert Timedelta or Excel time to 'H:M:S' string
 # ───────────────────────────────────────────────────────────────
@@ -225,13 +225,13 @@ for idx, row in df.iterrows():
         data = hdul[0].data.astype(float)
     
     # Extract box region
-    box = data[y_start:y_start+height, x_start:x_start+width]
+    box = data[y_start:y_start+height, x_start:x_start+width]/EXPOSURE_TIME
     
     # Compute statistics
     stats = {
         'file': current_file,
         'mean': np.mean(box),
-        'median': np.median(box),
+        'median': (np.median(box)),
         'std': np.std(box),
         'min': np.min(box),
         'max': np.max(box),
@@ -302,7 +302,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 # Constants
-PIXEL_AREA = (1.8 * 0.47 * 2)**2  # arcsec^2
+PIXEL_AREA = (0.101 * 2)**2  # arcsec^2
 ZERO_POINT = 24.0316
 EXPOSURE_TIME = 19  # seconds
 EXTINCTION_COEFF = 0.2
