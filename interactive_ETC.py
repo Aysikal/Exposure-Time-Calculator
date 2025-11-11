@@ -69,10 +69,12 @@ extinction = {'u': 0.404, 'g': 0.35, 'r': 0.2, 'i': 0.15}
 # -------------------------
 mirror_reflectivity = 0.5
 mirror_throughput = mirror_reflectivity ** 2
-other_optics = 0.8 
-eta = {'u' : 0.0025, 'g' : 0.384 , 'r' : }
+other_optics = 0.4
+eta = {'u' : 0.0025, 'g' : 0.384 , 'r' : 0.198, 'i' : 0.122 }
+QE = {'u' : 0.05, 'g' : 0.7 , 'r' : 0.75, 'i' : 0.57 }
 E = {} 
-
+for f in eta:
+    E[f] = eta[f] * mirror_reflectivity * QE.get(f) * other_optics
 # -------------------------
 # GUI & Input functions
 # -------------------------

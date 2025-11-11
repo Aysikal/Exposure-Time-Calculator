@@ -6,16 +6,17 @@ from astropy.nddata import Cutout2D
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 import astropy.units as u
-from ancillary_functions import airmass_function
 import matplotlib.pyplot as plt
 import logging
+from astropy.stats import sigma_clipped_stats
+from ancillary_functions import airmass_function
 
 # -----------------------------
 # USER PARAMETERS
 # -----------------------------
-e_to_ADU_gain = 1.0       # Physical gain: ADU → electrons
-count_gain = 1/45         # Camera quirk: unitless scaling for SNR
-READNOISE = 3.7
+CCD_GAIN = 1         # electrons per ADU (physical gain)
+count_gain = 1.0/16.5     # Camera quirk: scaling for SNR (keep for get_radius)
+READNOISE = 3.7          # electrons
 REFINE_BOX = 60
 inner_radius_factor = 1.5
 outer_radius_factor = 2.5
@@ -25,12 +26,12 @@ min_fwhm_pixels = 1.4
 RA_HARD = "05:58:25.03"
 DEC_HARD = "+00:06:40.7"
 
-FILTER_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\g\reduced"
+FILTER_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\r\reduced"
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 # -----------------------------
-# Constants for efficiency calculation
+# Constants for flux calculation
 # -----------------------------
 h = 6.62607015e-34
 c = 2.99792458e8
@@ -38,20 +39,10 @@ CW = {"u": 3560e-10, "g": 4825e-10, "r": 6261e-10, "i": 7672e-10}
 bandwidth = {"u": 463e-10, "g": 988e-10, "r": 1340e-10, "i": 1064e-10}
 extinction = {"u": 0.404, "g": 0.35, "r": 0.20, "i": 0.15}
 
-D = 3.4
-d = 0.6
-S = np.pi * (D/2)**2 - np.pi * (d/2)**2  # collecting area
-
-# -----------------------------
-# Instrument throughput
-# -----------------------------
-R_mirror = 0.5      # reflectivity per mirror
-n_mirrors = 2       # assume 2 mirrors
-T_filter = 0.384    # filter transmittance
-QE = 0.7            # detector quantum efficiency
-
-throughput = (R_mirror**n_mirrors) * T_filter * QE
-
+D = 3.4  # m1 
+d = 0.6  # m2
+S = np.pi * (D/2)**2 - np.pi * (d/2)**2  # collecting area in m^2
+S_cm2 = S * 1e4
 # -----------------------------
 # SNR-OPTIMIZED RADIUS
 # -----------------------------
@@ -88,13 +79,15 @@ def get_radius(image, center_xy, HWHM, gain, readnoise,
         sum_brightness = float(np.nansum(image[star_mask]))
         ann_mask = (dist > inner_radius*radius) & (dist <= outer_radius*radius)
         ann_pixels = image[ann_mask]
-        mean_bg = float(np.nanmedian(ann_pixels)) if ann_pixels.size>0 else float(np.nanmedian(image))
-
-        background_brightness = mean_bg * n_star_pix
+        if ann_pixels.size>0:
+            bg_level, _, _ = sigma_clipped_stats(ann_pixels, sigma=3.0)
+        else:
+            bg_level = float(np.nanmedian(image))
+        background_brightness = bg_level * n_star_pix
         net_counts = sum_brightness - background_brightness
 
         S_e = net_counts * gain
-        sky_e = n_star_pix * mean_bg * gain
+        sky_e = n_star_pix * bg_level * gain
         var_e = max(S_e,0.0) + sky_e + n_star_pix*(readnoise**2)
         noise_e = np.sqrt(max(var_e,1e-9))
         snr = S_e / noise_e if noise_e>0 else 0.0
@@ -109,60 +102,62 @@ def get_radius(image, center_xy, HWHM, gain, readnoise,
     return best_radius, max_snr, snrs, radii_list
 
 # -----------------------------
-# EXTRACT ADU
+# ADU Extraction
 # -----------------------------
 def extract_adu(image, x, y, r, inner_factor=inner_radius_factor, outer_factor=outer_radius_factor):
     yy, xx = np.indices(image.shape)
     dist = np.sqrt((xx - x)**2 + (yy - y)**2)
-
     star_mask = dist <= r
     n_pix = float(np.count_nonzero(star_mask))
     if n_pix == 0:
-        return 0.0
+        return 0.0, n_pix
 
     star_sum = float(np.nansum(image[star_mask]))
     ann_mask = (dist > inner_factor*r) & (dist <= outer_factor*r)
     ann_pixels = image[ann_mask]
-    bg_level = float(np.nanmedian(ann_pixels)) if ann_pixels.size>0 else float(np.nanmedian(image))
+    if ann_pixels.size>0:
+        bg_level, _, _ = sigma_clipped_stats(ann_pixels, sigma=3.0)
+    else:
+        bg_level = float(np.nanmedian(image))
     bg_total = bg_level * n_pix
 
-    return float(star_sum - bg_total)
+    return (float(star_sum - bg_total))/45, n_pix
 
 # -----------------------------
-# EFFICIENCY FUNCTIONS
+# Efficiency Functions (photons/sec)
 # -----------------------------
 def mag_to_flux_lambda(mag, wav):
-    f_nu = 10**(-0.4*(mag+48.6))
-    f_lambda = f_nu * c / (wav**2)
-    return f_lambda*1e-8
+    f_nu = 10**(-0.4*(mag+48.6))  # AB system
+    f_lambda = (f_nu * c) / (wav ** 2) * 1e-10
+    return f_lambda   
 
-def expected_photons_per_second(mag, wav, bw, area, extinction_coeff, airmass):
+def expected_photons_per_second(mag, wav, bw, area_cm2, extinction_coeff, airmass):
     mag_atm = mag + extinction_coeff*airmass
-    f_lambda_atm = mag_to_flux_lambda(mag_atm, wav)
-    photon_energy = h*c/wav
-    f_lambda_J = f_lambda_atm*1e-7
-    bw_A = bw*1e10
-    photons_m2_s = (f_lambda_J*bw_A)/photon_energy *1e4
-
-    # APPLY TELESCOPE + FILTER + QE THROUGHOUT
-    photons_m2_s *= throughput
-
-    return photons_m2_s*area
+    f_lambda_atm = mag_to_flux_lambda(mag_atm, wav)  # erg/cm^2/s/Å
+    photon_energy = h*c/wav  # Joules
+    f_lambda_J = f_lambda_atm * 1e-7  # erg → Joules
+    bw_A = bw * 1e10  # meters → Å
+    photons_per_s_per_cm2 = f_lambda_J * bw_A / photon_energy
+    return photons_per_s_per_cm2 * area_cm2
 
 def measured_photons_per_second(adu_sum, exposure_time, gain):
-    return (adu_sum*gain)/exposure_time
+    # Convert ADU to e
+    return (adu_sum * gain) / exposure_time
 
-def compute_efficiency(mag_catalog, adu_sum, exposure_time, filt, airmass):
+def compute_efficiency(mag_catalog, adu_sum, exposure_time, filt, airmass, n_pix):
     wav = CW[filt]
     bw = bandwidth[filt]
     ext = extinction[filt]
-    expected = expected_photons_per_second(mag_catalog, wav, bw, S, ext, airmass)
-    observed = measured_photons_per_second(adu_sum, exposure_time, e_to_ADU_gain)
-    print(f"Expected photons/s: {expected:.2e}, Observed photons/s: {observed:.2e}")
-    return observed/expected if expected>0 else 0.0
+
+    expected = expected_photons_per_second(mag_catalog, wav, bw, S_cm2, ext, airmass)
+    observed = measured_photons_per_second(adu_sum, exposure_time, CCD_GAIN)
+
+    eff_percent = 100 * observed / expected if expected>0 else 0.0
+    print(f"Expected photons/s: {expected:.2e}, Observed electrons/s: {observed:.2e}, Efficiency: {eff_percent:.2f}%")
+    return eff_percent
 
 # -----------------------------
-# MAIN FUNCTION FOR ONE FILE
+# Main function for one FITS file
 # -----------------------------
 def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_mag, grid_size=None):
     import math
@@ -172,7 +167,7 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
     wcs = WCS(hdr)
 
     exp = hdr.get("EXPTIME", np.nan)
-    exp_real = exp*1e-5
+    exp_real = exp * 1e-5  # already consistent with your FITS
     print("EXPTIME =", exp_real)
 
     date_str_full = hdr.get("DATE")
@@ -186,7 +181,7 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
 
     n_stars = len(refined_star_list_radec)
     if grid_size is None:
-        ncols = math.ceil(math.sqrt(n_stars))
+        ncols = math.ceil(np.sqrt(n_stars))
         nrows = math.ceil(n_stars/ncols)
     else:
         nrows, ncols = grid_size
@@ -221,12 +216,12 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
         ax_s.set_ylabel("SNR")
         ax_s.grid(True)
 
-        adu = extract_adu(data_frame, x_ref, y_ref, best_r)
-        E = compute_efficiency(catalog_mag, adu, exp_real, filt, X)
+        adu, n_pix = extract_adu(data_frame, x_ref, y_ref, best_r)
+        E_percent = compute_efficiency(catalog_mag, adu, exp_real, filt, X, n_pix)
 
         logging.info(f"{os.path.basename(file_path)} | Star {sid} | RA={ra_str}, DEC={dec_str}")
         logging.info(f"  Best radius: {best_r:.2f} px | SNR: {best_snr:.2f}")
-        logging.info(f"  ADU: {adu:.2f} | Airmass: {X:.2f} | Efficiency: {E:.4f}")
+        logging.info(f"  ADU: {adu:.2f} | Airmass: {X:.2f} | Efficiency: {E_percent:.2f}%")
 
         results_frame.append({
             "star_id": sid,
@@ -235,9 +230,10 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
             "r_best": best_r,
             "SNR": best_snr,
             "ADU": adu,
+            "n_pix": n_pix,
             "airmass": X,
             "exp_s": exp_real,
-            "efficiency": E
+            "efficiency_percent": E_percent
         })
 
     for ax in axes_cutouts[n_stars:]:
@@ -246,11 +242,11 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
         ax.axis('off')
 
     plt.suptitle("Cutouts", fontsize=16)
-    plt.tight_layout()
+    plt.tight_layout(rect=[0,0,1,0.95])
     plt.show()
 
     plt.suptitle("SNR vs Radius", fontsize=16)
-    plt.tight_layout()
+    plt.tight_layout(rect=[0,0,1,0.95])
     plt.show()
 
     return results_frame
@@ -259,11 +255,12 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
 # MAIN CALL
 # -----------------------------
 refined = [("05:58:25.03031399729", "+00:05:13.5242526788")]
-filt = "g"
-catalog_mag = 11.455
+filt = "r"
+catalog_mag = 10.1773171
 
-file_to_test = os.path.join(FILTER_FOLDER, 
-    "aligned_97b_8_g_2025_11_05_1x1_exp00.00.01.000_000001_High_2_cycleclean_iter3_dark_and_flat_corrected.fit")
+file_to_test = os.path.join(FILTER_FOLDER,
+    r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\r\dark_corrected\aligned_97b_8_r_2025_11_05_1x1_exp00.00.01.000_000001_High_1_cycleclean_iter3_dark_corrected.fit"
+)
 
 results = run_efficiency_one_file(file_to_test, refined, filt, catalog_mag)
 print(results)
