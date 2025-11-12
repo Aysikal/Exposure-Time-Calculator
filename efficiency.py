@@ -1,5 +1,5 @@
 # Corrected full Script B matching SNR logic of Script A
-
+from zoneinfo import ZoneInfo
 import numpy as np
 import os
 from datetime import datetime
@@ -11,12 +11,12 @@ import astropy.units as u
 import matplotlib.pyplot as plt
 import logging
 from astropy.stats import sigma_clipped_stats
-from ancillary_functions import airmass_function
+from ancillary_functions import airmass_function, calculate_sky_magnitude
 
 # -----------------------------
 # USER PARAMETERS (UPDATED TO MATCH SCRIPT A)
 # -----------------------------
-count_gain = 16.5
+count_gain = 45
 READNOISE = 3.7
 REFINE_BOX = 60
 
@@ -123,22 +123,58 @@ def get_radius(image, center_xy, HWHM, gain, readnoise,
 # -----------------------------
 # Flux calculations
 # -----------------------------
-def expected_photons_per_second_v2(mag_ab, wav_m, bandwidth_m, area_cm2, extinction_coeff, airmass):
-    f_nu_erg = 10**(-0.4 * (mag_ab + 48.6))
-    f_nu_J = f_nu_erg * 1e-7
-    f_lambda_J_per_m = f_nu_J * c / (wav_m ** 2)
+def expected_photons_per_second_v2(mag_ab, wav_m, bandwidth_m, area_cm2, extinction_coeff, airmass, sky_mag):
+    """
+    Compute expected photons per second from a star **net of sky background**.
+
+    Parameters
+    ----------
+    mag_ab : float
+        Star magnitude (AB)
+    wav_m : float
+        Central wavelength (meters)
+    bandwidth_m : float
+        Bandwidth (meters)
+    area_cm2 : float
+        Telescope collecting area (cm^2)
+    extinction_coeff : float
+        Extinction coefficient for the filter
+    airmass : float
+        Airmass
+    sky_mag : float
+        Sky surface brightness magnitude (AB)
+
+    Returns
+    -------
+    photons_per_s : float
+        Expected photons per second **after sky subtraction**
+    """
+    # Star flux
+    f_nu_star_erg = 10**(-0.4 * (mag_ab + 48.6))
+    f_nu_star_J = f_nu_star_erg * 1e-7
+    f_lambda_star_J_per_m = f_nu_star_J * c / (wav_m ** 2)
     mag_atm = mag_ab + extinction_coeff * airmass
     flux_ratio = 10**(-0.4 * (mag_atm - mag_ab))
-    f_lambda_atm = f_lambda_J_per_m * flux_ratio
-    power_per_cm2 = f_lambda_atm * bandwidth_m
+    f_lambda_star_atm = f_lambda_star_J_per_m * flux_ratio
+    power_star_per_cm2 = f_lambda_star_atm * bandwidth_m
     E_photon = h * c / wav_m
-    photons_per_s_per_cm2 = power_per_cm2 / E_photon
-    return photons_per_s_per_cm2 * area_cm2
+    photons_star = power_star_per_cm2 / E_photon * area_cm2
 
-def measured_electrons_per_second(adu_sum, exposure_time, gain_e_per_adu):
+    # Sky flux
+    f_nu_sky_erg = 10**(-0.4 * (sky_mag + 48.6))
+    f_nu_sky_J = f_nu_sky_erg * 1e-7
+    f_lambda_sky_J_per_m = f_nu_sky_J * c / (wav_m ** 2)
+    power_sky_per_cm2 = f_lambda_sky_J_per_m * bandwidth_m
+    photons_sky = power_sky_per_cm2 / E_photon * area_cm2
+
+    # Net signal
+    photons_net = photons_star - photons_sky
+    return max(photons_net, 0.0)
+
+def measured_electrons_per_second(adu_sum, exposure_time):
     if exposure_time <= 0:
         return 0.0
-    return (adu_sum * gain_e_per_adu) / exposure_time
+    return (adu_sum) / exposure_time
 
 # -----------------------------
 # Main routine
@@ -159,6 +195,8 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
         dt_obj = datetime.fromisoformat(date_str_full)
     except ValueError:
         dt_obj = datetime.strptime(date_str_full, "%Y-%m-%dT%H:%M:%S.%f")
+
+    print("UTC datetime:", dt_obj.strftime("%Y-%m-%d %H:%M:%S"))
 
     hour, minute = dt_obj.hour, dt_obj.minute
     X = airmass_function(dt_obj.strftime("%Y-%m-%d"), hour, minute, RA_HARD, DEC_HARD)
@@ -208,9 +246,16 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
         wav_m = CW[filt]
         bw_m = bandwidth[filt]
         ext_coeff = extinction[filt]
+        # Convert dt_obj to local string in the expected format
+        date_str_only = dt_obj.strftime("%Y-%m-%d")  # just the date
+        hour = dt_obj.hour
+        minute = dt_obj.minute
 
-        expected_ph_s = expected_photons_per_second_v2(catalog_mag, wav_m, bw_m, S_cm2, ext_coeff, X)
-        observed_e_s = measured_electrons_per_second(adu, exp_real, count_gain)
+        sky_mag = calculate_sky_magnitude(date_str_only, hour, minute, RA_HARD, DEC_HARD)
+       
+        expected_ph_s = expected_photons_per_second_v2(catalog_mag, wav_m, bw_m, S_cm2, ext_coeff, X, sky_mag)
+
+        observed_e_s = measured_electrons_per_second(adu, exp_real)
         E_percent = 100.0 * observed_e_s / expected_ph_s if expected_ph_s > 0 else 0.0
 
         logging.info(f"{os.path.basename(file_path)} | Star {sid} | RA={ra_str}, DEC={dec_str}")
@@ -238,11 +283,6 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
     plt.suptitle("Cutouts", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
-
-    plt.suptitle("SNR vs Radius", fontsize=16)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.show()
-
     return results_frame
 
 # -----------------------------

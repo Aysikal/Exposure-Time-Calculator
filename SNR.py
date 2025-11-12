@@ -109,3 +109,4 @@ plt.ylabel("SNR")
 plt.title("SNR vs Aperture Radius")
 plt.grid(True)
 plt.show()
+
