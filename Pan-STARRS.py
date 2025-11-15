@@ -16,11 +16,13 @@ wcs = WCS(hdu.header)
 ny, nx = data.shape  # image dimensions
 
 # ----------- Query Pan-STARRS ----------
-ra_center = 134.936
-dec_center = +22.957
-radius = 0.08 * u.deg  
-center = SkyCoord(ra_center, dec_center, unit=(u.deg, u.deg))
+# Correct center coordinates (decimal degrees)
+ra_center = 89.604   # 05:58:25.03
+dec_center = 0.087   # +00:05:13.56
+radius = 0.1 * u.deg   # a slightly larger search radius
 
+center = SkyCoord(ra_center, dec_center, unit='deg')
+  
 ps = Catalogs.query_region(center, radius=radius, catalog="Panstarrs")
 ps_df = ps.to_pandas()
 

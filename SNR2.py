@@ -3,9 +3,6 @@ import os
 from datetime import datetime
 from astropy.io import fits
 from astropy.nddata import Cutout2D
-from astropy.wcs import WCS
-from astropy.coordinates import SkyCoord
-import astropy.units as u
 import matplotlib.pyplot as plt
 import logging
 from astropy.stats import sigma_clipped_stats
@@ -16,7 +13,7 @@ inner_radius_factor = 2.4
 outer_radius_factor = 3
 min_hwhm_pixels = 1
 min_fwhm_pixels = 2
-gain = 50
+gain = 45
 readnoise = 3.7
 
 # ---------------- Function: SNR-based aperture radius optimization ----------------
@@ -79,18 +76,15 @@ def get_radius(image, center_xy, HWHM, gain, readnoise,
 
 
 # ---------------- User Inputs ----------------
-refined = [("05:58:27.1320", "+00:04:23.770")]  
-file_to_test = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\r\dark_corrected\aligned_97b_8_r_2025_11_05_1x1_exp00.00.01.000_000001_High_1_cycleclean_iter3_dark_corrected.fit"
+# Direct pixel coordinates 
+pixel_x, pixel_y = 780, 951  
+center_xy = (pixel_x, pixel_y)
 
-# ---------------- Load FITS and WCS ----------------
+file_to_test = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\r\high\keep\hot pixels removed\aligned\reduced\aligned_target3_r_T10C_2025_10_01_2x2_exp00.01.00.000_000009_High_1_cycleclean_iter3_dark_and_flat_corrected.fit"
+
+# ---------------- Load FITS ----------------
 hdul = fits.open(file_to_test)
 image_data = hdul[0].data
-wcs = WCS(hdul[0].header)
-
-# ---------------- Convert RA/Dec to pixel coordinates ----------------
-ra, dec = refined[0]
-coord = SkyCoord(ra, dec, unit=(u.hourangle, u.deg))
-center_xy = wcs.world_to_pixel(coord)  # (x, y)
 
 # ---------------- Estimate HWHM ----------------
 HWHM = 5  # Adjust as needed
@@ -100,7 +94,7 @@ best_radius, max_snr, snrs, radii_list = get_radius(
     image_data, center_xy, HWHM, gain, readnoise
 )
 
-print("Initial center (x, y):", (center_xy[0], center_xy[1]))
+print("Initial center (x, y):", center_xy)
 print("Initial best radius:", best_radius)
 print("Initial Max SNR:", max_snr)
 
@@ -115,7 +109,7 @@ plt.show()
 
 # ---------------- Refinement: fit 2D Gaussian on a local cutout ----------------
 cutout_size = (50, 50)
-initial_cutout = Cutout2D(image_data, position=center_xy, size=cutout_size, wcs=wcs)
+initial_cutout = Cutout2D(image_data, position=center_xy, size=cutout_size)
 
 data_cut = initial_cutout.data.copy()
 data_for_fit = np.nan_to_num(data_cut, nan=0.0)
@@ -177,7 +171,7 @@ plt.grid(True)
 plt.show()
 
 # ---------------- Create final cutout centered on refined center ----------------
-final_cutout = Cutout2D(image_data, position=refined_center, size=cutout_size, wcs=wcs)
+final_cutout = Cutout2D(image_data, position=refined_center, size=cutout_size)
 cut_data = final_cutout.data
 
 # ---------------- Display refined cutout ----------------
@@ -203,7 +197,7 @@ circ_x = x_fit_centered + best_radius * np.cos(circ_theta)
 circ_y = y_fit_centered + best_radius * np.sin(circ_theta)
 plt.plot(circ_x, circ_y, color='cyan', lw=1.2, label=f'Aperture r={best_radius:.2f}')
 
-plt.legend(loc='upper right')
+plt.legend()
 plt.xlabel("X (pixels)")
 plt.ylabel("Y (pixels)")
 plt.grid(False)

@@ -11,6 +11,7 @@ import astropy.units as u
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from ancillary_functions import airmass_function, get_fli, calculate_sky_magnitude
+
 # -------------------------------------------------------------------
 # Site configuration
 # -------------------------------------------------------------------
@@ -21,7 +22,6 @@ SITE_LOCATION  = EarthLocation(lat=SITE_LAT*u.deg,
                                height=SITE_ELEV*u.m)
 LOCAL_TIMEZONE   = "Asia/Tehran"
 
-
 # -------------------------
 # Main Window Setup
 # -------------------------
@@ -29,7 +29,6 @@ root = tk.Tk()
 root.title("Calculator")
 root.geometry("400x250")
 root.configure(bg='#F0F0F0')
-
 custom_font = ('Helvetica', 12)
 
 # -------------------------
@@ -41,8 +40,8 @@ RA = DEC = filter_choice = None
 magnitude = None
 binning = None
 seeing_conditions = None
-non_linearity_error = 3500 #ADU
-over_exposure_error = 4000 #ADU 
+non_linearity_error = 3500 # ADU
+over_exposure_error = 4000 # ADU 
 pixel_scale = 0.101 
 dc = 0.08
 h = 6.62620e-34
@@ -51,26 +50,18 @@ readnoise = 3.7  # electrons
 D = 3.4
 d = 0.6
 S = np.pi*(D/2)**2 - np.pi*(d/2)**2  # m^2
-S_cm2 = S * 1e4  # cm^2
 
-# -------------------------
+
 # Gain (ADU -> electrons)
-# -------------------------
 GAIN = 1  
 
-# -------------------------
 # Filters, Bandwidths, Extinction
-# -------------------------
-# Original numbers kept but treated explicitly as meters.
-# e.g., 6261e-10 m = 626.1 nm = 6.261e-7 m
 CW = {'u': 3540e-10, 'g': 4770e-10, 'r': 6230e-10, 'i': 7630e-10}        # central wavelength in meters
 band_width = {'u': 600e-10, 'g': 1380e-10, 'r': 1380e-10, 'i': 1520e-10} # effective bandwidth in meters
 extinction = {'u': 0.404, 'g': 0.35, 'r': 0.2, 'i': 0.15}  
-QE= {'u': 0.05, 'g': 0.7, 'r': 0.75, 'i': 0.57}  
-# -------------------------
+
 # System Efficiency (fraction)
-# -------------------------
-E = 0.0025
+E = 1.5 * 10**(-2)
 
 # -------------------------
 # GUI & Input functions
@@ -181,88 +172,49 @@ def ask_date_time():
     minute = ask_input("Date and Time", prompt="Enter the minute (0-59):", input_type='int')
 
 # -------------------------
+# Photon -> Electron Conversion Helper
+# -------------------------
+def photons_to_electrons(photons_per_sec, efficiency):
+    return photons_per_sec * efficiency 
+
+# -------------------------
 # SNR & Exposure Calculations
 # -------------------------
 def calculate_snr(year, month, day, hour, minute, RA, DEC, seeing, pixel_scale, binning, h, c, CW, filter_choice,
-                  magnitude, extinction, band_width, exposure_time, E, S, get_fli, calculate_sky_magnitude, readnoise, QE):
-
-    # airmass
+                  magnitude, extinction, band_width, exposure_time, E, S, get_fli, calculate_sky_magnitude, readnoise):
     date_str = f"{year}-{month:02d}-{day:02d}"
     airmass = airmass_function(date_str, hour, minute, RA, DEC)
-
-    # aperture pixel count (keep your formula)
     npix = np.pi * ((seeing / pixel_scale*2*binning)** 2)
-
-    # central wavelength and bandwidth in meters (already provided)
     wav_m = CW[filter_choice]
     bw_m = band_width[filter_choice]
 
-    # AB flux density f_nu in erg s^-1 cm^-2 Hz^-1
+    # Source flux
     m_corrected = magnitude + (airmass * extinction[filter_choice])
     f_nu_erg = 10 ** (-0.4 * (m_corrected + 48.6))
-
-    # convert to Joules: 1 erg = 1e-7 J
-    f_nu_J = f_nu_erg * 1e-7  # J s^-1 cm^-2 Hz^-1
-
-    # Convert to f_lambda in J s^-1 cm^-2 m^-1 : f_lambda = f_nu * c / lambda^2
-    f_lambda_J_per_m = f_nu_J * c / (wav_m ** 2)  # J s^-1 cm^-2 m^-1
-
-    # Apply atmospheric extinction (magnitudes) multiplicatively via flux ratio
-    mag_atm = m_corrected
-    flux_ratio = 10 ** (-0.4 * (mag_atm - magnitude))
-    f_lambda_atm = f_lambda_J_per_m * flux_ratio  # J s^-1 cm^-2 m^-1 after atmosphere
-
-    # Power per cm^2 collected across the band (J s^-1 cm^-2)
-    power_per_cm2 = f_lambda_atm * bw_m
-
-    # Total power on telescope collecting area (J / s)
-    total_power_J_per_s = power_per_cm2 * (S * 1e4)  # S in m^2 -> S*1e4 cm^2
-
-    # Photon energy at central wavelength (J)
+    f_nu_J = f_nu_erg * 1e-7
+    f_lambda_J_per_m = f_nu_J * c / (wav_m ** 2)
+    power_per_cm2 = f_lambda_J_per_m * bw_m
+    total_power_J_per_s = power_per_cm2 * (S * 1e4)
     E_photon = h * c / wav_m
-
-    # Photons per second collected by telescope (photons / s)
     photons_per_s = total_power_J_per_s / E_photon
+    electrons_per_s = photons_to_electrons(photons_per_s, E)
 
-    # Electrons per second produced by system (apply net efficiency E)
-    electrons_per_s = photons_per_s * E * QE
+    # Signal electrons
+    signal_e = electrons_per_s * exposure_time
 
-    # ADU per second 
-    A_e_per_sec = electrons_per_s  
-
-    # signal electrons in exposure
-    signal_e = A_e_per_sec * exposure_time
-
-    # --- sky contribution ---
-    fli = get_fli(date_str, hour, minute)
+    # Sky background
     sky_mag = calculate_sky_magnitude(date_str, hour, minute, RA, DEC)
-
     f_nu_s_erg = 10 ** (-0.4 * (sky_mag + 48.6))
     f_nu_s_J = f_nu_s_erg * 1e-7
     f_lambda_s_J_per_m = f_nu_s_J * c / (wav_m ** 2)
-    # apply atmosphere for sky using same ext correction approach
-    # (sky_mag assumed already represents observed sky magnitude; if it's top-of-atmosphere, include extinction)
-    power_sky_per_cm2 = f_lambda_s_J_per_m * bw_m  # J s^-1 cm^-2 across band
-    total_sky_power_J_per_s = power_sky_per_cm2 * (S * 1e4)  # J s^-1 on telescope
-    photons_sky_per_s = total_sky_power_J_per_s / E_photon  # photons / s falling on telescope across the band
-    # convert to electrons / s (system efficiency)
-    electrons_sky_per_s = photons_sky_per_s * E * QE
-
-    # Now per-pixel sky: photons hitting telescope distribute over focal plane; convert using pixel scale
-    # Pixel area on sky in arcsec^2: pixel_scale^2. Convert surface brightness to electrons per second per pixel:
-    # The factor to go from total telescope-collected sky photons to per-pixel depends on how you define sky_mag (we follow original pattern):
-    # Scale electrons_sky_per_s by pixel area fraction: pixel_area_arcsec2 / (FOV area normalization)
-    # Here we mimic original pattern: compute per-pixel electrons using (pixel_scale^2) factor applied similarly to C in original code.
-    # Simpler consistent approach: compute sky surface brightness power per arcsec^2, then multiply by pixel area.
-    # To avoid changing overall scaling drastically, keep original style: compute C_e_per_sec_per_pix proportional to electrons_sky_per_s * (pixel_scale**2) * (1/SOME_NORMAL)
-    # We'll compute a per-pixel electrons/sec by distributing telescope-collected photons over an approximate plate scale area:
-    # The original code used: C = (f_lambda_s * 1e-7 * (band * 1e10) * E * S * 1e4 * (pixel_scale ** 2)) / P
-    # Recreating consistent units: electrons_sky_per_s * (pixel_scale ** 2) divided by an approximate normalization solid angle.
-    # For simplicity and unit consistency we compute per-pixel electrons by scaling the telescope-collected sky electrons by the pixel solid angle fraction:
-    # pixel_area_sr is not known here; we use proportional factor pixel_scale**2 as in original code (keeps relative scaling).
-    C_e_per_sec_per_pix = electrons_sky_per_s * (pixel_scale ** 2)  # electrons / s / pix (keeps your original scaling style)
+    power_sky_per_cm2 = f_lambda_s_J_per_m * bw_m
+    total_sky_power_J_per_s = power_sky_per_cm2 * (S * 1e4)
+    photons_sky_per_s = total_sky_power_J_per_s / E_photon
+    electrons_sky_per_s = photons_to_electrons(photons_sky_per_s, E)
+    C_e_per_sec_per_pix = electrons_sky_per_s * (pixel_scale ** 2)
     N_sky_e_per_pix = C_e_per_sec_per_pix * exposure_time
 
+    # Net signal and noise
     signal_net_e = signal_e - npix * N_sky_e_per_pix
     B = npix * (N_sky_e_per_pix + readnoise**2)
     noise = np.sqrt(signal_net_e + B)
@@ -271,9 +223,6 @@ def calculate_snr(year, month, day, hour, minute, RA, DEC, seeing, pixel_scale, 
     return SNR
 
 def solve_for_t(A_e_per_sec, npix, C_e_per_sec_per_pix, readnoise, s):
-    # Solve quadratic for t using electrons/sec quantities:
-    # SNR^2 = (A t)^2 / (A t + npix*(C t + rn^2))
-    # Rearranged: (A^2) t^2 - s^2 (A + npix*C) t - s^2 npix rn^2 = 0
     a = A_e_per_sec ** 2
     b = -s**2 * (A_e_per_sec + npix * C_e_per_sec_per_pix)
     c = -s**2 * npix * (readnoise ** 2)
@@ -288,17 +237,15 @@ def solve_for_t(A_e_per_sec, npix, C_e_per_sec_per_pix, readnoise, s):
     return min(candidates)
 
 def calculate_exposure_time(snr_value, year, month, day, hour, minute, RA, DEC, seeing, pixel_scale, binning,
-                            h, c, CW, filter_choice, magnitude, extinction, band_width, E, S, get_fli, offset,
-                            calculate_sky_magnitude, readnoise, gain):
-
+                            h, c, CW, filter_choice, magnitude, extinction, band_width, E, S, get_fli,
+                            calculate_sky_magnitude, readnoise):
     date_str = f"{year}-{month:02d}-{day:02d}"
     airmass = airmass_function(date_str, hour, minute, RA, DEC)
-
     npix = np.pi * ((seeing / pixel_scale*2*binning)** 2)
     wav_m = CW[filter_choice]
     bw_m = band_width[filter_choice]
 
-    # source photons/electrons per second (unit-consistent)
+    # Source electrons/sec
     m_corrected = magnitude + (airmass * extinction[filter_choice])
     f_nu_erg = 10 ** (-0.4 * (m_corrected + 48.6))
     f_nu_J = f_nu_erg * 1e-7
@@ -307,18 +254,17 @@ def calculate_exposure_time(snr_value, year, month, day, hour, minute, RA, DEC, 
     total_power_J_per_s = power_per_cm2 * (S * 1e4)
     E_photon = h * c / wav_m
     photons_per_s = total_power_J_per_s / E_photon
-    A_e_per_sec = photons_per_s * E
+    A_e_per_sec = photons_to_electrons(photons_per_s, E)
 
-    # sky per-pixel electrons/sec (consistent with above)
+    # Sky per-pixel electrons/sec
     sky_mag = calculate_sky_magnitude(date_str, hour, minute, RA, DEC)
-    print(f"Sky Magnitude per arcsec^2 {sky_mag}")
     f_nu_s_erg = 10 ** (-0.4 * (sky_mag + 48.6))
     f_nu_s_J = f_nu_s_erg * 1e-7
     f_lambda_s_J_per_m = f_nu_s_J * c / (wav_m ** 2)
     power_sky_per_cm2 = f_lambda_s_J_per_m * bw_m
     total_sky_power_J_per_s = power_sky_per_cm2 * (S * 1e4)
     photons_sky_per_s = total_sky_power_J_per_s / E_photon
-    electrons_sky_per_s = photons_sky_per_s * E
+    electrons_sky_per_s = photons_to_electrons(photons_sky_per_s, E)
     C_e_per_sec_per_pix = electrons_sky_per_s * (pixel_scale ** 2)
 
     return solve_for_t(A_e_per_sec, npix, C_e_per_sec_per_pix, readnoise, snr_value)
@@ -357,7 +303,7 @@ def exp_calculator():
 def process_snr_calculation(exposure_time):
     snr = calculate_snr(year, month, day, hour, minute, RA, DEC, seeing, pixel_scale, binning,
                         h, c, CW, filter_choice, magnitude, extinction, band_width,
-                        exposure_time, E, S, get_fli, calculate_sky_magnitude, readnoise, GAIN)
+                        exposure_time, E, S, get_fli, calculate_sky_magnitude, readnoise)
     message = f"Calculated SNR: {snr:.2f}"
     print(message)
     messagebox.showinfo("SNR Calculation Result", message)
@@ -367,7 +313,7 @@ def process_exposure_time_calculation(snr_value):
     exposure_time = calculate_exposure_time(snr_value, year, month, day, hour, minute, RA, DEC, seeing,
                                             pixel_scale, binning, h, c, CW, filter_choice, magnitude,
                                             extinction, band_width, E, S, get_fli, calculate_sky_magnitude,
-                                            readnoise, GAIN)
+                                            readnoise)
     if exposure_time is None:
         message = "Unable to calculate exposure time with given parameters."
     else:

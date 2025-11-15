@@ -27,10 +27,10 @@ min_hwhm_pixels = 1.0
 min_fwhm_pixels = 2.0
 HWHM_FOR_SNR = 5.0
 
-RA_HARD = "05:58:25.03"
-DEC_HARD = "+00:05:13.56"
+RA_HARD = "03:53:21"
+DEC_HARD = "+00:00:20"
 
-FILTER_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\r\reduced"
+FILTER_FOLDER = r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Sep30\Rezaei_30_sep_2025\target3\r\high\keep\hot pixels removed\aligned\reduced\aligned_target3_r_T10C_2025_10_01_2x2_exp00.01.00.000_000009_High_1_cycleclean_iter3_dark_and_flat_corrected.fit"
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
@@ -103,7 +103,7 @@ def get_radius(image, center_xy, HWHM, gain, readnoise,
         net_counts = sum_brightness - background_brightness
 
         S_e = net_counts / gain
-        sky_e = (n_star_pix * bg_level) * gain
+        sky_e = (n_star_pix * bg_level) / gain
 
         var_e = (sum_brightness / gain) + sky_e + n_star_pix * (readnoise ** 2)
         noise_e = np.sqrt(max(var_e, 1e-9))
@@ -120,56 +120,70 @@ def get_radius(image, center_xy, HWHM, gain, readnoise,
 
     return best_radius, max_snr, best_S_e, best_npix, snrs, radii_list
 
-# -----------------------------
-# Flux calculations
-# -----------------------------
-def expected_photons_per_second_v2(mag_ab, wav_m, bandwidth_m, area_cm2, extinction_coeff, airmass, sky_mag):
+def expected_photons_per_second_v2(mag_ab, wav_m, bandwidth_m, area_cm2,
+                                   extinction_coeff, airmass, sky_mag,
+                                   npix=1, pixel_scale=1.0, readnoise=0.0, efficiency=1.0):
     """
-    Compute expected photons per second from a star **net of sky background**.
+    Compute expected photons per second from a star and sky,
+    scaled to the aperture size and including readnoise.
 
     Parameters
     ----------
     mag_ab : float
-        Star magnitude (AB)
+        Star magnitude (AB system)
     wav_m : float
         Central wavelength (meters)
     bandwidth_m : float
-        Bandwidth (meters)
+        Filter bandwidth (meters)
     area_cm2 : float
         Telescope collecting area (cm^2)
     extinction_coeff : float
-        Extinction coefficient for the filter
+        Atmospheric extinction coefficient
     airmass : float
-        Airmass
+        Observing airmass
     sky_mag : float
-        Sky surface brightness magnitude (AB)
-
+        Sky background magnitude (AB system)
+    npix : int
+        Number of pixels in the aperture
+    pixel_scale : float
+        Pixel scale in arcseconds/pixel (or matching units)
+    readnoise : float
+        Read noise per pixel (electrons)
+    efficiency : float
+        System efficiency (0-1)
+    
     Returns
     -------
-    photons_per_s : float
-        Expected photons per second **after sky subtraction**
+    photons_star : float
+        Expected star photons per second
+    N_sky_e_per_pix : float
+        Expected sky electrons per pixel per second
     """
-    # Star flux
-    f_nu_star_erg = 10**(-0.4 * (mag_ab + 48.6))
+    # --- Star flux corrected for extinction ---
+    m_atm = mag_ab + extinction_coeff * airmass
+    f_nu_star_erg = 10**(-0.4 * (m_atm + 48.6))
     f_nu_star_J = f_nu_star_erg * 1e-7
     f_lambda_star_J_per_m = f_nu_star_J * c / (wav_m ** 2)
-    mag_atm = mag_ab + extinction_coeff * airmass
-    flux_ratio = 10**(-0.4 * (mag_atm - mag_ab))
-    f_lambda_star_atm = f_lambda_star_J_per_m * flux_ratio
-    power_star_per_cm2 = f_lambda_star_atm * bandwidth_m
+    power_star_per_cm2 = f_lambda_star_J_per_m * bandwidth_m
     E_photon = h * c / wav_m
     photons_star = power_star_per_cm2 / E_photon * area_cm2
+    electrons_star = photons_star * efficiency
 
-    # Sky flux
-    f_nu_sky_erg = 10**(-0.4 * (sky_mag + 48.6))
-    f_nu_sky_J = f_nu_sky_erg * 1e-7
-    f_lambda_sky_J_per_m = f_nu_sky_J * c / (wav_m ** 2)
-    power_sky_per_cm2 = f_lambda_sky_J_per_m * bandwidth_m
-    photons_sky = power_sky_per_cm2 / E_photon * area_cm2
+    # --- Sky background scaled to aperture ---
+    f_nu_s_erg = 10**(-0.4 * (sky_mag + 48.6))
+    f_nu_s_J = f_nu_s_erg * 1e-7
+    f_lambda_s_J_per_m = f_nu_s_J * c / (wav_m ** 2)
+    power_sky_per_cm2 = f_lambda_s_J_per_m * bandwidth_m
+    total_sky_power_J_per_s = power_sky_per_cm2 * area_cm2
+    photons_sky_per_s = total_sky_power_J_per_s / E_photon
+    electrons_sky_per_s = photons_sky_per_s * efficiency
 
-    # Net signal
-    photons_net = photons_star - photons_sky
-    return max(photons_net, 0.0)
+    # Scale sky to aperture (per pixel)
+    C_e_per_sec_per_pix = electrons_sky_per_s * (pixel_scale ** 2)
+    N_sky_e_per_pix = C_e_per_sec_per_pix + readnoise**2  # includes readnoise contribution
+
+    return electrons_star - (N_sky_e_per_pix*npix)
+
 
 def measured_electrons_per_second(adu_sum, exposure_time):
     if exposure_time <= 0:
@@ -288,9 +302,10 @@ def run_efficiency_one_file(file_path, refined_star_list_radec, filt, catalog_ma
 # -----------------------------
 # MAIN CALL
 # -----------------------------
-refined = [("05:58:25.03031399729", "+00:05:13.5242526788")]
+refined = [("05:58:25.74", "+00:07:17.84")]
 filt = "r"
-catalog_mag = 10.1773171
+catalog_mag = 14.1644001
+
 
 file_to_test = os.path.join(FILTER_FOLDER,
     r"C:\Users\AYSAN\Desktop\project\INO\ETC\Data\Rezaei_Hossein_Atanaz_Kosar_2025_11_04\light\Aysan\high\hot pixels removed\97b-8\aligned\r\dark_corrected\aligned_97b_8_r_2025_11_05_1x1_exp00.00.01.000_000001_High_1_cycleclean_iter3_dark_corrected.fit"
